@@ -1,0 +1,101 @@
+.me-page {
+  padding-bottom: 60px;
+}
+
+.me-header {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 48px 32px;
+  background: linear-gradient(135deg, #2563eb, #60a5fa);
+  background: var(--sm-grad, linear-gradient(135deg, #2563eb, #60a5fa));
+}
+
+.avatar {
+  width: 110px;
+  height: 110px;
+  border-radius: 50%;
+  background: #fff;
+  color: var(--sm-primary);
+  font-size: 48px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 16px rgba(17, 24, 39, 0.12);
+}
+
+.me-info {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.me-name {
+  color: #fff;
+  font-size: 36px;
+  font-weight: 600;
+}
+
+.me-header .muted {
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.stats-card {
+  display: flex;
+  margin-top: -28px;
+  margin-left: 20px;
+  margin-right: 20px;
+}
+
+.stat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+}
+
+.stat-value {
+  font-size: 32px;
+  font-weight: 700;
+  color: #2563eb;
+  color: var(--sm-primary, #2563eb);
+}
+
+.full-btn {
+  width: 100%;
+  text-align: center;
+}
+
+.user-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 0;
+  border-bottom: 1px solid var(--sm-line);
+  gap: 16px;
+}
+
+.user-row:last-child {
+  border-bottom: none;
+}
+
+.user-row Text {
+  display: block;
+}
+
+.add-user {
+  padding-top: 16px;
+}
+
+.inline-actions {
+  display: flex;
+  gap: 16px;
+}
+
+.inline-actions .btn {
+  flex: 1;
+  text-align: center;
+}

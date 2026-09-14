@@ -1,0 +1,59 @@
+.tag-input-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.tag-input-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #eff6ff;
+  background: var(--sm-primary-soft, #eff6ff);
+  color: #2563eb;
+  color: var(--sm-primary, #2563eb);
+  border-radius: 999px;
+  padding: 10px 18px;
+  font-size: 24px;
+}
+
+.tag-input-remove {
+  font-size: 28px;
+  line-height: 1;
+  color: #6b7280;
+  padding: 0 2px;
+}
+
+.tag-input-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.tag-input-field {
+  flex: 1;
+  min-width: 0;
+}
+
+.tag-input-add {
+  flex-shrink: 0;
+  height: 80px;
+  padding: 0 24px;
+  border-radius: 12px;
+  background: #f3f4f6;
+  background: var(--sm-bg, #f3f4f6);
+  border: 1px solid #e5e7eb;
+  border-color: var(--sm-line, #e5e7eb);
+  color: #111827;
+  color: var(--sm-ink, #111827);
+  font-size: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 160ms ease-out;
+}
+
+.tag-input-add:active {
+  transform: scale(0.96);
+}

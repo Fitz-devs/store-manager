@@ -1,0 +1,23 @@
+/** 全端统一的输入提示词，避免同一属性各写各的 */
+export const PH = {
+  productName: '如 可乐 330ml',
+  productAlias: '如 快乐水',
+  category: '如 饮料',
+  brand: '如 可口可乐',
+  saleUnit: '件 / 条 / 包',
+  retailPrice: '如 3.5',
+  friendPrice: '如 3.2',
+  purchasePrice: '如 2.5',
+  barcode: '扫一下或手输商品码',
+  versionName: '如 本地版 / 外地版',
+  promotion: '如 100元3件 / 买3送2',
+  prizeDesc: '如 再来一瓶',
+  prizeExtra: '加价元数，0 为免费',
+  customerName: '如 张三',
+  customerPhone: '手机号',
+  customerAddress: '如 幸福路 1 号',
+  supplier: '如 城北批发部',
+  note: '',
+  orderNote: '如 下午送货',
+  paymentNote: '如 部分现金',
+} as const

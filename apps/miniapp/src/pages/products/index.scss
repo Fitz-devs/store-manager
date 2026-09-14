@@ -1,0 +1,125 @@
+.products-page {
+  padding-bottom: 40px;
+}
+
+.scan-hero-page {
+  margin: 16px 20px 0;
+}
+
+.search-header {
+  padding: 8px 0 0;
+}
+
+.home-guide {
+  padding: 8px 0 0;
+}
+
+.guide-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin: 8px 20px 0;
+}
+
+.guide-tile {
+  background: #ffffff;
+  background: var(--sm-surface, #ffffff);
+  border-radius: 20px;
+  padding: 28px 24px;
+  min-height: 140px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  box-shadow: 0 1px 2px rgba(17, 24, 39, 0.04), 0 4px 12px rgba(17, 24, 39, 0.04);
+  box-shadow: var(--sm-shadow-card, 0 1px 2px rgba(17, 24, 39, 0.04), 0 4px 12px rgba(17, 24, 39, 0.04));
+  transition: transform 160ms ease-out;
+}
+
+.guide-tile:active {
+  transform: scale(0.97);
+}
+
+.guide-tile-primary {
+  background: linear-gradient(135deg, #2563eb, #60a5fa);
+  background: var(--sm-grad, linear-gradient(135deg, #2563eb, #60a5fa));
+  box-shadow: 0 8px 20px rgba(37, 99, 235, 0.28);
+}
+
+.guide-tile-title {
+  font-size: 34px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.guide-tile-primary .guide-tile-title {
+  color: #fff;
+}
+
+.guide-tile-sub {
+  font-size: 24px;
+  color: #6b7280;
+}
+
+.guide-tile-primary .guide-tile-sub {
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.home-stats {
+  display: flex;
+  gap: 8px;
+}
+
+.home-stat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 4px;
+}
+
+.home-stat-value {
+  font-size: 30px;
+  font-weight: 700;
+}
+
+.card-title {
+  font-size: 30px;
+  font-weight: 600;
+}
+
+.guide-order {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 0;
+  border-bottom: 1px solid #e5e7eb;
+  border-bottom-color: var(--sm-line, #e5e7eb);
+}
+
+.guide-order:last-child {
+  border-bottom: none;
+}
+
+.guide-order-main {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+
+.guide-order-no {
+  font-size: 28px;
+  font-weight: 600;
+}
+
+.guide-order-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  flex-shrink: 0;
+}

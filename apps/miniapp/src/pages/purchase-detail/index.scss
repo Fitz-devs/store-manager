@@ -1,0 +1,53 @@
+.purchase-detail-page {
+  padding-bottom: 60px;
+}
+
+.detail-no {
+  font-size: 34px;
+  font-weight: 600;
+}
+
+.detail-total {
+  font-size: 40px;
+  margin-top: 12px;
+}
+
+.item-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 16px 0;
+  border-bottom: 1px solid #eef0f3;
+  gap: 16px;
+}
+
+.item-row:last-child {
+  border-bottom: none;
+}
+
+.item-main {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.item-amount {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.image-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.doc-image {
+  width: 200px;
+  height: 200px;
+  border-radius: 12px;
+  background: #f0f2f5;
+}

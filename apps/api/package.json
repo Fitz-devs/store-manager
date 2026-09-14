@@ -1,0 +1,34 @@
+{
+  "name": "@sm/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --config wrangler.dev.toml --local",
+    "dev:remote": "wrangler dev",
+    "build:web": "bun run --cwd ../miniapp build:h5",
+    "deploy": "bun run build:web && wrangler deploy",
+    "deploy:api-only": "wrangler deploy",
+    "migrate:local": "wrangler d1 migrations apply store-manager-db --local --config wrangler.dev.toml",
+    "migrate:remote": "wrangler d1 migrations apply store-manager-db --remote",
+    "db:reset": "rm -rf .wrangler/state && wrangler d1 migrations apply store-manager-db --local --config wrangler.dev.toml",
+    "seed:demo": "bash scripts/seed-demo.sh",
+    "setup:cloudflare": "bash scripts/setup-cloudflare.sh",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@sm/shared": "workspace:*",
+    "hono": "^4.13.7",
+    "jose": "^6.2.12",
+    "kysely": "^0.29.5",
+    "kysely-d1": "^0.4.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "latest",
+    "typescript": "^5.9.0",
+    "vitest": "^3.0.0",
+    "wrangler": "^4.0.0"
+  }
+}

@@ -1,0 +1,49 @@
+.categories-page {
+  padding-bottom: 40px;
+}
+
+.barcode-line {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.barcode-line .input {
+  flex: 1;
+  min-width: 0;
+}
+
+.list-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 0;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.list-row:last-child {
+  border-bottom: none;
+}
+
+.list-row-main {
+  flex: 1;
+  min-width: 0;
+  font-size: 28px;
+}
+
+.row-actions {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex-shrink: 0;
+}
+
+.row-actions Text {
+  font-size: 26px;
+}
+
+.edit-input {
+  flex: 1;
+  min-width: 0;
+}

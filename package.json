@@ -1,0 +1,26 @@
+{
+  "name": "store-manager",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "api:dev": "bun run --cwd apps/api dev",
+    "api:migrate:local": "bun run --cwd apps/api migrate:local",
+    "api:migrate:remote": "bun run --cwd apps/api migrate:remote",
+    "api:test": "bun run --cwd apps/api test",
+    "api:typecheck": "bun run --cwd apps/api typecheck",
+    "miniapp:dev": "bun run --cwd apps/miniapp dev:weapp",
+    "miniapp:build": "bun run --cwd apps/miniapp build:weapp"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.0"
+  },
+  "packageManager": "bun@1.3.10",
+  "dependencies": {
+    "@zxing/browser": "^0.1.5",
+    "@zxing/library": "^0.21.3"
+  }
+}
