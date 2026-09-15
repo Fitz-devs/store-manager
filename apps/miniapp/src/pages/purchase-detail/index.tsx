@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import Taro, { useDidShow, useRouter } from '@tarojs/taro'
-import { Image, Text, View } from '@tarojs/components'
+import { Button, Image, Text, View } from '@tarojs/components'
 import type { PurchaseWithItems } from '@sm/shared'
 import { api, fileUrl } from '../../api/client'
 import { useAuthGuard } from '../../utils/auth'
@@ -12,17 +12,45 @@ export default function PurchaseDetail() {
   const router = useRouter()
   const id = Number(router.params.id)
   const [purchase, setPurchase] = useState<PurchaseWithItems | null>(null)
+  const [loadError, setLoadError] = useState('')
+  const [loading, setLoading] = useState(false)
 
-  useDidShow(() => {
-    if (!Number.isFinite(id)) return
-    api
+  const load = () => {
+    if (!Number.isFinite(id)) {
+      setLoadError('入库单不存在')
+      return Promise.resolve()
+    }
+    setLoading(true)
+    setLoadError('')
+    return api
       .get<PurchaseWithItems>(`/api/purchases/${id}`)
       .then(setPurchase)
-      .catch((error) => Taro.showToast({ title: error.message, icon: 'none' }))
+      .catch((error) => {
+        setLoadError(error.message || '加载失败')
+        Taro.showToast({ title: error.message, icon: 'none' })
+      })
+      .finally(() => setLoading(false))
+  }
+
+  useDidShow(() => {
+    load()
   })
 
   if (!purchase) {
-    return <View className="empty">加载中…</View>
+    if (loadError) {
+      return (
+        <View className="sm-empty">
+          <Text className="sm-empty-title">加载失败</Text>
+          <Text className="sm-empty-sub">{loadError}</Text>
+          <View className="sm-empty-actions">
+            <Button className="btn btn-primary" onClick={() => load()}>
+              重试
+            </Button>
+          </View>
+        </View>
+      )
+    }
+    return <View className="empty">{loading || Number.isFinite(id) ? '加载中…' : '入库单不存在'}</View>
   }
 
   const imageKeys: string[] = purchase.image_keys ? (JSON.parse(purchase.image_keys) as string[]) : []
@@ -32,7 +60,9 @@ export default function PurchaseDetail() {
       <View className="card">
         <View className="row-between">
           <Text className="detail-no">{purchase.purchase_no}</Text>
-          <Text className="tag">{PURCHASE_KIND_LABELS[purchase.kind]}</Text>
+          <Text className={`tag ${purchase.kind === 'goods_offset' ? 'tag-warn' : 'tag-muted'}`}>
+            {PURCHASE_KIND_LABELS[purchase.kind]}
+          </Text>
         </View>
         <Text className="muted">
           {purchase.supplier_name || '未填供应商'} · 入库日期 {purchase.ordered_at.slice(0, 10)}

@@ -19,7 +19,7 @@
   justify-content: space-between;
   gap: 16px;
   padding: 18px 0;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--sm-line, #e5e7eb);
 }
 
 .list-row:last-child {

@@ -10,6 +10,7 @@ import { pickImages, uploadLocalImage } from '../../utils/media'
 import { scanBarcode } from '../../utils/scan'
 import { PH } from '../../config/placeholders'
 import { fenToYuan, formatFen, yuanToFen } from '../../utils/format'
+import { findLowPriceIssues, guardManualLowPrice } from '../../utils/priceGuard'
 import './index.scss'
 
 interface PromoDraft {
@@ -120,6 +121,24 @@ export default function ProductEdit() {
   const nameError = tried && !name.trim() ? '请填写商品名称' : ''
   const priceError =
     tried && (!priceValue.trim() || yuanToFen(priceValue) <= 0) ? '请填写有效的零售价' : ''
+
+  const createPurchaseFen = purchasePrice.trim() ? yuanToFen(purchasePrice) : null
+  const createRetailFen = retailPrice.trim() ? yuanToFen(retailPrice) : null
+  const createFriendFen = friendPrice.trim() ? yuanToFen(friendPrice) : null
+  const createRetailLow =
+    createPurchaseFen != null && createPurchaseFen > 0 && createRetailFen != null && createRetailFen > 0 && createRetailFen < createPurchaseFen
+  const createFriendLow =
+    createPurchaseFen != null && createPurchaseFen > 0 && createFriendFen != null && createFriendFen > 0 && createFriendFen < createPurchaseFen
+
+  const editPurchaseFen = selPurchase.trim()
+    ? yuanToFen(selPurchase)
+    : (selectedSku?.latest_purchase_price ?? null)
+  const editRetailFen = selRetail.trim() ? yuanToFen(selRetail) : null
+  const editFriendFen = selFriend.trim() ? yuanToFen(selFriend) : null
+  const editRetailLow =
+    editPurchaseFen != null && editPurchaseFen > 0 && editRetailFen != null && editRetailFen > 0 && editRetailFen < editPurchaseFen
+  const editFriendLow =
+    editPurchaseFen != null && editPurchaseFen > 0 && editFriendFen != null && editFriendFen > 0 && editFriendFen < editPurchaseFen
 
   useEffect(() => {
     if (editId) return
@@ -341,14 +360,23 @@ export default function ProductEdit() {
       Taro.showToast({ title: '请填写版本名和有效的零售价', icon: 'none' })
       return
     }
+    const retailFen = yuanToFen(selRetail)
+    const friendFen = selFriend.trim() ? yuanToFen(selFriend) : null
+    const purchaseFen = selPurchase.trim() ? yuanToFen(selPurchase) : null
+    const lowIssues = findLowPriceIssues({
+      retail: retailFen,
+      friend: friendFen,
+      purchase: purchaseFen,
+    })
+    if (!(await guardManualLowPrice(lowIssues))) return
     setSavingPrices(true)
     try {
       const created = await api.post<SkuWithBarcodes>(`/api/products/${editId}/skus`, {
         spec_name: newSpecName.trim(),
         sale_unit: detail?.skus[0]?.sale_unit || '件',
-        retail_price: yuanToFen(selRetail),
-        friend_price: selFriend.trim() ? yuanToFen(selFriend) : null,
-        latest_purchase_price: selPurchase.trim() ? yuanToFen(selPurchase) : null,
+        retail_price: retailFen,
+        friend_price: friendFen,
+        latest_purchase_price: purchaseFen,
       })
       Taro.showToast({ title: '版本已添加', icon: 'success' })
       setNewSpecName('')
@@ -450,13 +478,22 @@ export default function ProductEdit() {
       Taro.showToast({ title: '请填写有效的零售价', icon: 'none' })
       return
     }
+    const retailFen = yuanToFen(selRetail)
+    const friendFen = selFriend.trim() ? yuanToFen(selFriend) : null
+    const purchaseFen = selPurchase.trim() ? yuanToFen(selPurchase) : selectedSku.latest_purchase_price
+    const lowIssues = findLowPriceIssues({
+      retail: retailFen,
+      friend: friendFen,
+      purchase: purchaseFen,
+    })
+    if (!(await guardManualLowPrice(lowIssues))) return
     setSavingPrices(true)
     try {
       await api.patch(`/api/skus/${selectedSku.id}`, {
         spec_name: multiSku ? selSpec.trim() || null : selectedSku.spec_name,
         sale_unit: multiSku ? selectedSku.sale_unit : selUnit.trim() || '件',
-        retail_price: yuanToFen(selRetail),
-        friend_price: selFriend.trim() ? yuanToFen(selFriend) : null,
+        retail_price: retailFen,
+        friend_price: friendFen,
         latest_purchase_price: selPurchase.trim() ? yuanToFen(selPurchase) : null,
         reason: '商品编辑',
       })
@@ -484,13 +521,6 @@ export default function ProductEdit() {
           existing.push(barcode.id)
         }
       }
-      for (const id of existing) {
-        try {
-          await api.delete(`/api/barcodes/${id}`)
-        } catch {
-          // ignore
-        }
-      }
       if (next) {
         const sku = detail?.skus.find((item) => item.status === 'active') ?? detail?.skus[0]
         if (!sku) {
@@ -503,9 +533,21 @@ export default function ProductEdit() {
           is_primary: true,
         })
       }
+      // delete old codes only after the new one succeeds
+      let deleteFailed = false
+      for (const barcodeId of existing) {
+        try {
+          await api.delete(`/api/barcodes/${barcodeId}`)
+        } catch {
+          deleteFailed = true
+        }
+      }
       setEditCode(next)
       markDirty()
-      Taro.showToast({ title: '商品码已保存', icon: 'success' })
+      Taro.showToast({
+        title: deleteFailed ? '商品码已保存，旧码清理有失败' : '商品码已保存',
+        icon: deleteFailed ? 'none' : 'success',
+      })
       await load()
     } catch (error) {
       Taro.showToast({ title: (error as Error).message, icon: 'none' })
@@ -521,6 +563,15 @@ export default function ProductEdit() {
         Taro.showToast({ title: !name.trim() ? '请填写商品名称' : '请填写有效的零售价', icon: 'none' })
         return
       }
+      const retailFen = yuanToFen(retailPrice)
+      const friendFen = friendPrice.trim() ? yuanToFen(friendPrice) : null
+      const purchaseFen = purchasePrice.trim() ? yuanToFen(purchasePrice) : null
+      const lowIssues = findLowPriceIssues({
+        retail: retailFen,
+        friend: friendFen,
+        purchase: purchaseFen,
+      })
+      if (!(await guardManualLowPrice(lowIssues))) return
       setBusy(true)
       try {
         const created = await api.post<ProductDetail>('/api/products', {
@@ -777,6 +828,7 @@ export default function ProductEdit() {
                     </Text>
                     <Input className="input" type="digit" placeholder={PH.retailPrice} value={retailPrice} onInput={(event) => setRetailPrice(event.detail.value)} />
                     {priceError ? <Text className="field-error">{priceError}</Text> : null}
+                    {createRetailLow ? <Text className="field-warn">! 低于进货价</Text> : null}
                   </View>
                   <View className="field half">
                     <Text className="field-label">销售单位</Text>
@@ -791,6 +843,7 @@ export default function ProductEdit() {
                   <View className="field half">
                     <Text className="field-label">友情价（元）</Text>
                     <Input className="input" type="digit" placeholder={PH.friendPrice} value={friendPrice} onInput={(event) => setFriendPrice(event.detail.value)} />
+                    {createFriendLow ? <Text className="field-warn">! 低于进货价</Text> : null}
                   </View>
                 </View>
               </>
@@ -859,6 +912,7 @@ export default function ProductEdit() {
                       零售价（元） <Text className="required-star">*</Text>
                     </Text>
                     <Input className="input" type="digit" value={selRetail} onInput={(event) => setSelRetail(event.detail.value)} />
+                    {editRetailLow ? <Text className="field-warn">! 低于进货价</Text> : null}
                   </View>
                   <View className="field half">
                     <Text className="field-label">进货价（元）</Text>
@@ -869,6 +923,7 @@ export default function ProductEdit() {
                   <View className="field half">
                     <Text className="field-label">友情价（元）</Text>
                     <Input className="input" type="digit" value={selFriend} onInput={(event) => setSelFriend(event.detail.value)} />
+                    {editFriendLow ? <Text className="field-warn">! 低于进货价</Text> : null}
                   </View>
                   {!multiSku && !showSkuManager && (
                     <View className="field half">

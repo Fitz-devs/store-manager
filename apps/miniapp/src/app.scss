@@ -26,6 +26,43 @@ taro-page-core,
   --sm-shadow-card: 0 1px 2px rgba(17, 24, 39, 0.04), 0 4px 12px rgba(17, 24, 39, 0.04);
   --sm-shadow-float: 0 8px 24px rgba(37, 99, 235, 0.35);
   --sm-grad: linear-gradient(135deg, #2563eb, #60a5fa);
+
+  /* Map NutUI brand to sm blue so mixed UI stays one palette */
+  --nutui-color-primary: #2563eb;
+  --nutui-color-primary-stop-1: #60a5fa;
+  --nutui-color-primary-stop-2: #2563eb;
+  --nutui-color-primary-pressed: #1d4ed8;
+  --nutui-color-primary-disabled: #93c5fd;
+  --nutui-color-primary-disabled-special: #93c5fd;
+  --nutui-color-primary-light-pressed: #eff6ff;
+  --nutui-color-primary-icon: #2563eb;
+  --nutui-brand-1: #eff6ff;
+  --nutui-brand-2: #dbeafe;
+  --nutui-brand-3: #93c5fd;
+  --nutui-brand-4: #60a5fa;
+  --nutui-brand-5: #3b82f6;
+  --nutui-brand-6: #2563eb;
+  --nutui-brand-7: #1d4ed8;
+  --nutui-brand-8: #1e40af;
+  --nutui-brand-9: #1e3a8a;
+  --nutui-brand-stop-1: #60a5fa;
+  --nutui-brand-stop-2: #2563eb;
+  --nutui-color-success: #059669;
+  --nutui-color-success-light: #ecfdf5;
+  --nutui-color-warning: #d97706;
+  --nutui-color-warning-light: #fffbeb;
+  --nutui-color-danger: #dc2626;
+  --nutui-color-danger-light: #fef2f2;
+  --nutui-font-size-1: 24px;
+  --nutui-font-size-2: 26px;
+  --nutui-font-size-3: 28px;
+  --nutui-font-size-4: 30px;
+  --nutui-font-size-5: 36px;
+  --nutui-font-size-6: 40px;
+  --nutui-border-radius: 12px;
+  --nutui-border-radius-s: 8px;
+  --nutui-border-radius-m: 12px;
+  --nutui-border-radius-l: 16px;
 }
 
 page,
@@ -579,4 +616,70 @@ taro-input-core .weui-input {
   white-space: nowrap;
   overflow: hidden;
   font-size: 26px;
+}
+
+/* —— shared stepper —— */
+.sm-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sm-stepper-btn {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--sm-bg);
+  color: var(--sm-ink);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  line-height: 1;
+  transition: transform 160ms ease-out;
+}
+
+.sm-stepper-btn:active {
+  transform: scale(0.92);
+}
+
+.sm-stepper-value {
+  min-width: 64px;
+  text-align: center;
+  font-size: 30px;
+  font-weight: 600;
+}
+
+/* —— larger hit area for inline text actions —— */
+.sm-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 64px;
+  min-width: 96px;
+  padding: 8px 12px;
+  font-size: 26px;
+  color: var(--sm-primary);
+}
+
+.sm-action-danger {
+  color: var(--sm-danger);
+}
+
+.sm-textarea {
+  min-height: 120px;
+  width: 100%;
+  box-sizing: border-box;
+  line-height: 1.5;
+}
+
+.sm-empty-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 40px 20px 20px;
+}
+
+.sm-empty-wrap .sm-empty {
+  padding: 12px 20px 0;
 }

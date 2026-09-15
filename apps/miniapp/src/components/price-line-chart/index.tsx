@@ -14,15 +14,17 @@ export interface TrendSeries {
   points: TrendPoint[]
 }
 
-const PAD_T = 36
-const PAD_B = 40
+/** Geometry matches .chart-plot (design px; Taro converts to rpx on weapp). */
+const PAD_L = 24
+const PAD_R = 24
+const PAD_T = 28
+const PAD_B = 36
+const PLOT_W = 300
+const PLOT_H = 180
+const INNER_W = PLOT_W - PAD_L - PAD_R
+const INNER_H = PLOT_H - PAD_T - PAD_B
 
-function collectDates(series: TrendSeries[]): string[] {
-  const set = new Set<string>()
-  for (const s of series) for (const p of s.points) set.add(p.date)
-  return [...set].sort()
-}
-
+/** View-only polyline chart (works on weapp + H5). */
 export default function PriceLineChart({
   series,
   title = '价格趋势',
@@ -45,26 +47,69 @@ export default function PriceLineChart({
     )
   }
 
-  const dates = collectDates(active)
+  const dateSet = new Set<string>()
+  for (const s of active) for (const p of s.points) dateSet.add(p.date)
+  const dates = [...dateSet].sort()
+
   const values: number[] = []
   for (const s of active) for (const p of s.points) values.push(p.value)
   const min = Math.min(...values)
   const max = Math.max(...values)
   const span = max - min || 1
 
-  const W = 640
-  const H = 240
-  const padL = 40
-  const padR = 40
-  const innerW = W - padL - padR
-  const innerH = H - PAD_T - PAD_B
-
   const xOf = (date: string) => {
-    if (dates.length <= 1) return padL + innerW / 2
-    const i = dates.indexOf(date)
-    return padL + (innerW * i) / (dates.length - 1)
+    if (dates.length <= 1) return PAD_L + INNER_W / 2
+    return PAD_L + (INNER_W * dates.indexOf(date)) / (dates.length - 1)
   }
-  const yOf = (value: number) => PAD_T + innerH * (1 - (value - min) / span)
+  const yOf = (value: number) => PAD_T + INNER_H * (1 - (value - min) / span)
+
+  const segments: Array<{
+    key: string
+    left: number
+    top: number
+    width: number
+    angle: number
+    color: string
+  }> = []
+  const dots: Array<{ key: string; left: number; top: number; color: string; last: boolean }> = []
+  const lastLabels: Array<{ key: string; left: number; top: number; color: string; text: string }> = []
+
+  for (const s of active) {
+    const coords = s.points.map((p) => ({ x: xOf(p.date), y: yOf(p.value) }))
+    for (let i = 0; i < coords.length - 1; i++) {
+      const a = coords[i]!
+      const b = coords[i + 1]!
+      const dx = b.x - a.x
+      const dy = b.y - a.y
+      const length = Math.sqrt(dx * dx + dy * dy)
+      const angle = (Math.atan2(dy, dx) * 180) / Math.PI
+      segments.push({
+        key: `${s.key}-seg-${i}`,
+        left: a.x,
+        top: a.y,
+        width: length,
+        angle,
+        color: s.color,
+      })
+    }
+    coords.forEach((c, i) => {
+      dots.push({
+        key: `${s.key}-dot-${i}`,
+        left: c.x,
+        top: c.y,
+        color: s.color,
+        last: i === coords.length - 1,
+      })
+    })
+    const last = coords[coords.length - 1]!
+    lastLabels.push({
+      key: `${s.key}-last`,
+      left: last.x,
+      top: last.y,
+      color: s.color,
+      text: formatFen(s.points[s.points.length - 1]!.value),
+    })
+  }
 
   return (
     <View className="chart-card">
@@ -84,41 +129,59 @@ export default function PriceLineChart({
         ))}
       </View>
       <View className="chart-plot">
-        <svg className="chart-svg" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet">
-          {active.map((s) => {
-            const coords = s.points.map((p) => ({ x: xOf(p.date), y: yOf(p.value) }))
-            const d = coords.map((c, i) => `${i === 0 ? 'M' : 'L'}${c.x},${c.y}`).join(' ')
-            return (
-              <g key={s.key}>
-                <path d={d} fill="none" stroke={s.color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-                {coords.map((c, i) => (
-                  <circle key={`${s.key}-${i}`} cx={c.x} cy={c.y} r={4} fill={s.color} />
-                ))}
-              </g>
-            )
-          })}
-          {dates.map((date) => (
-            <text key={date} x={xOf(date)} y={H - 12} textAnchor="middle" fontSize="16" fill="#6b7280">
-              {date}
-            </text>
-          ))}
-          {active.map((s) => {
-            const last = s.points[s.points.length - 1]!
-            return (
-              <text
-                key={`${s.key}-last`}
-                x={xOf(last.date)}
-                y={yOf(last.value) - 10}
-                textAnchor="middle"
-                fontSize="16"
-                fill={s.color}
-                fontWeight="600"
-              >
-                {formatFen(last.value)}
-              </text>
-            )
-          })}
-        </svg>
+        {[0, 0.5, 1].map((ratio) => (
+          <View
+            key={ratio}
+            className="chart-guide"
+            style={{ top: `${PAD_T + INNER_H * (1 - ratio)}px` }}
+          />
+        ))}
+        {segments.map((seg) => (
+          <View
+            key={seg.key}
+            className="chart-line"
+            style={{
+              left: `${seg.left}px`,
+              top: `${seg.top}px`,
+              width: `${seg.width}px`,
+              background: seg.color,
+              transform: `rotate(${seg.angle}deg)`,
+            }}
+          />
+        ))}
+        {dots.map((dot) => (
+          <View
+            key={dot.key}
+            className={`chart-dot ${dot.last ? 'chart-dot-last' : ''}`}
+            style={{
+              left: `${dot.left}px`,
+              top: `${dot.top}px`,
+              background: dot.color,
+            }}
+          />
+        ))}
+        {lastLabels.map((label) => (
+          <Text
+            key={label.key}
+            className="chart-last-label"
+            style={{
+              left: `${label.left}px`,
+              top: `${label.top}px`,
+              color: label.color,
+            }}
+          >
+            {label.text}
+          </Text>
+        ))}
+        {dates.map((date, index) => (
+          <Text
+            key={date}
+            className="chart-x-label"
+            style={{ left: `${xOf(date)}px` }}
+          >
+            {dates.length <= 5 || index % 2 === 0 || index === dates.length - 1 ? date.slice(5) : ''}
+          </Text>
+        ))}
       </View>
     </View>
   )

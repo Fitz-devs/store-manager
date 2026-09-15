@@ -10,7 +10,8 @@ interface AuthResponse {
 }
 
 export default function Login() {
-  const [mode, setMode] = useState<'loading' | 'setup' | 'login'>('loading')
+  const [mode, setMode] = useState<'loading' | 'error' | 'setup' | 'login'>('loading')
+  const [statusError, setStatusError] = useState('')
   const [wxEnabled, setWxEnabled] = useState(false)
   const [storeName, setStoreName] = useState('')
   const [nickname, setNickname] = useState('')
@@ -20,7 +21,9 @@ export default function Login() {
   const [bindToken, setBindToken] = useState('')
   const [busy, setBusy] = useState(false)
 
-  useEffect(() => {
+  const loadStatus = () => {
+    setMode('loading')
+    setStatusError('')
     api
       .get<{ needs_setup: boolean; wx_login_enabled: boolean }>('/api/auth/setup-status')
       .then((data) => {
@@ -28,8 +31,13 @@ export default function Login() {
         setWxEnabled(data.wx_login_enabled)
       })
       .catch(() => {
-        Taro.showModal({ title: '无法连接服务器', content: '请检查 API 地址与网络', showCancel: false })
+        setStatusError('无法连接服务器，请检查 API 地址与网络')
+        setMode('error')
       })
+  }
+
+  useEffect(() => {
+    loadStatus()
   }, [])
 
   const finish = (data: AuthResponse) => {
@@ -57,6 +65,10 @@ export default function Login() {
         return
       }
       if (mode === 'setup') {
+        if (username.trim().length < 2) {
+          Taro.showToast({ title: '账号至少 2 位', icon: 'none' })
+          return
+        }
         if (password.length < 6) {
           Taro.showToast({ title: '密码至少 6 位', icon: 'none' })
           return
@@ -112,6 +124,24 @@ export default function Login() {
     return (
       <View className="login">
         <View className="empty">正在连接服务器…</View>
+      </View>
+    )
+  }
+
+  if (mode === 'error') {
+    return (
+      <View className="login">
+        <View className="login-logo">店</View>
+        <View className="login-title">店铺管家</View>
+        <View className="sm-empty">
+          <Text className="sm-empty-title">连接失败</Text>
+          <Text className="sm-empty-sub">{statusError}</Text>
+          <View className="sm-empty-actions">
+            <Button className="btn btn-primary" onClick={loadStatus}>
+              重试
+            </Button>
+          </View>
+        </View>
       </View>
     )
   }

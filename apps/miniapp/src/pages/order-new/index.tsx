@@ -11,6 +11,7 @@ import type {
 } from '@sm/shared'
 import { api, fileUrl, getUser } from '../../api/client'
 import { DateTimeField } from '../../components/datetime-field'
+import { Stepper } from '../../components/stepper'
 import { useAuthGuard } from '../../utils/auth'
 import { TAB_PAGE_FOOTER_STYLE } from '../../utils/env'
 import { scanBarcode } from '../../utils/scan'
@@ -297,19 +298,34 @@ export default function OrderNew() {
     }
   }
 
+  const setQtyAt = (index: number, qty: number) => {
+    setCart((previous) => {
+      const next = [...previous]
+      const item = next[index]
+      if (!item) return previous
+      next[index] = { ...item, qty: Math.max(1, qty) }
+      return next
+    })
+  }
+
   const updateQty = (index: number, delta: number) => {
+    let removed = false
     setCart((previous) => {
       const next = [...previous]
       const item = next[index]
       if (!item) return previous
       const qty = item.qty + delta
       if (qty <= 0) {
+        removed = true
         next.splice(index, 1)
         return next
       }
       next[index] = { ...item, qty }
       return next
     })
+    if (removed) {
+      Taro.showToast({ title: '已移除该商品', icon: 'none' })
+    }
   }
 
   const updatePrice = (index: number, value: string, lineId: string) => {
@@ -409,6 +425,7 @@ export default function OrderNew() {
   }
 
   const submit = async () => {
+    if (submitting) return
     if (!cart.length) {
       Taro.showToast({ title: '请先添加商品', icon: 'none' })
       return
@@ -678,15 +695,12 @@ export default function OrderNew() {
                 />
                 <Text className="muted">元/{item.unitName}</Text>
               </View>
-              <View className="qty">
-                <View className="qty-btn" onClick={() => updateQty(index, -1)}>
-                  −
-                </View>
-                <Text className="qty-value">{item.qty}</Text>
-                <View className="qty-btn" onClick={() => updateQty(index, 1)}>
-                  ＋
-                </View>
-              </View>
+              <Stepper
+                value={item.qty}
+                min={1}
+                onChange={(next) => setQtyAt(index, next)}
+                onRemoveAtMin={() => updateQty(index, -1)}
+              />
             </View>
           </View>
         ))}
@@ -738,7 +752,7 @@ export default function OrderNew() {
             )}
             <Input className="input field" placeholder="送货地址" value={address} onInput={(event) => setAddress(event.detail.value)} />
             <Input className="input field" placeholder="联系人" value={contact} onInput={(event) => setContact(event.detail.value)} />
-            <Input className="input field" placeholder="联系电话" value={phone} onInput={(event) => setPhone(event.detail.value)} />
+            <Input className="input field" type="number" maxlength={20} placeholder="联系电话" value={phone} onInput={(event) => setPhone(event.detail.value)} />
             <View className="field-row">
               <DateTimeField
                 date={deliveryDate}

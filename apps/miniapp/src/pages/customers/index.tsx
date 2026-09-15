@@ -1,8 +1,11 @@
 import { useRef, useState } from 'react'
-import Taro, { useDidShow, useReachBottom } from '@tarojs/taro'
-import { Button, Input, Text, View } from '@tarojs/components'
+import Taro, { useDidShow, usePullDownRefresh, useReachBottom } from '@tarojs/taro'
+import { Button, Text, View } from '@tarojs/components'
 import type { CustomerListItem } from '@sm/shared'
 import { api } from '../../api/client'
+import { EmptyState } from '../../components/empty-state'
+import { ListLoading } from '../../components/list-loading'
+import { SearchBox } from '../../components/search-box'
 import { useAuthGuard } from '../../utils/auth'
 import { formatFen } from '../../utils/format'
 import './index.scss'
@@ -10,17 +13,21 @@ import './index.scss'
 export default function Customers() {
   useAuthGuard()
   const [keyword, setKeyword] = useState('')
+  const keywordRef = useRef('')
   const [items, setItems] = useState<CustomerListItem[]>([])
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(false)
-  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const loadingRef = useRef(false)
 
   const load = async (nextPage: number, append = false) => {
+    if (append && loadingRef.current) return
+    loadingRef.current = true
     setLoading(true)
     try {
       const query = new URLSearchParams()
-      if (keyword.trim()) query.set('q', keyword.trim())
+      const q = keywordRef.current.trim()
+      if (q) query.set('q', q)
       query.set('page', String(nextPage))
       query.set('page_size', '20')
       const data = await api.get<{ items: CustomerListItem[]; total: number }>(
@@ -32,6 +39,7 @@ export default function Customers() {
     } catch (error) {
       Taro.showToast({ title: (error as Error).message, icon: 'none' })
     } finally {
+      loadingRef.current = false
       setLoading(false)
     }
   }
@@ -44,39 +52,25 @@ export default function Customers() {
     if (!loading && items.length < total) load(page + 1, true)
   })
 
-  const onKeywordInput = (value: string) => {
+  usePullDownRefresh(() => {
+    load(1).finally(() => Taro.stopPullDownRefresh())
+  })
+
+  const onKeywordChange = (value: string) => {
+    keywordRef.current = value
     setKeyword(value)
-    if (searchTimer.current) clearTimeout(searchTimer.current)
-    searchTimer.current = setTimeout(() => load(1), 350)
   }
 
   return (
     <View className="customers-page">
       <View className="list-header">
         <View className="toolbar">
-          <View className="sm-search">
-            <Text className="sm-search-icon">🔍</Text>
-            <Input
-              className="sm-search-input"
-              placeholder="搜索姓名 / 电话 / 地址"
-              value={keyword}
-              confirmType="search"
-              onInput={(event) => onKeywordInput(event.detail.value)}
-              onConfirm={() => load(1)}
-            />
-            {keyword ? (
-              <Text
-                className="sm-search-clear"
-                onClick={() => {
-                  setKeyword('')
-                  if (searchTimer.current) clearTimeout(searchTimer.current)
-                  load(1)
-                }}
-              >
-                ✕
-              </Text>
-            ) : null}
-          </View>
+          <SearchBox
+            value={keyword}
+            onChange={onKeywordChange}
+            onSearch={() => load(1)}
+            placeholder="搜索姓名 / 电话 / 地址"
+          />
           <View
             className="sm-new-btn"
             onClick={() => Taro.navigateTo({ url: '/pages/customer-edit/index' })}
@@ -110,20 +104,25 @@ export default function Customers() {
       ))}
 
       {!loading && !items.length && (
-        <View className="sm-empty">
-          <Text className="sm-empty-title">暂无客户</Text>
-          <Text className="sm-empty-sub">新增客户后，开单可直接选人记账</Text>
-          <View className="sm-empty-actions">
-            <Button
-              className="btn btn-primary"
-              onClick={() => Taro.navigateTo({ url: '/pages/customer-edit/index' })}
-            >
-              新增客户
-            </Button>
-          </View>
-        </View>
+        <EmptyState
+          title="暂无客户"
+          sub="新增客户后，开单可直接选人记账"
+          actions={[
+            {
+              label: '新增客户',
+              primary: true,
+              onClick: () => Taro.navigateTo({ url: '/pages/customer-edit/index' }),
+            },
+          ]}
+        />
       )}
-      {loading && <View className="empty">加载中…</View>}
+      <ListLoading
+        loading={loading}
+        hasItems={items.length > 0}
+        shown={items.length}
+        total={total}
+        unit="位"
+      />
     </View>
   )
 }

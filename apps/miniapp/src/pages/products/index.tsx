@@ -89,7 +89,7 @@ export default function Products() {
       </View>
 
       <View className="home-guide">
-        {report && (
+        {report ? (
           <View className="card home-stats">
             <View
               className="home-stat"
@@ -107,6 +107,21 @@ export default function Products() {
             </View>
             <View className="home-stat" onClick={openStockList}>
               <Text className="home-stat-value danger-text">{report.out_of_stock_count}</Text>
+              <Text className="muted">缺货商品</Text>
+            </View>
+          </View>
+        ) : (
+          <View className="card home-stats">
+            <View className="home-stat">
+              <Text className="home-stat-value muted">--</Text>
+              <Text className="muted">待收款</Text>
+            </View>
+            <View className="home-stat">
+              <Text className="home-stat-value muted">--</Text>
+              <Text className="muted">今日销售</Text>
+            </View>
+            <View className="home-stat">
+              <Text className="home-stat-value muted">--</Text>
               <Text className="muted">缺货商品</Text>
             </View>
           </View>

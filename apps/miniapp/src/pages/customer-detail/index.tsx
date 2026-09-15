@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import Taro, { useDidShow, useReachBottom, useRouter } from '@tarojs/taro'
-import { Button, Input, Text, View } from '@tarojs/components'
+import { Button, Input, Text, Textarea, View } from '@tarojs/components'
 import type { CustomerDetail, Order } from '@sm/shared'
 import { api } from '../../api/client'
 import { useAuthGuard } from '../../utils/auth'
@@ -12,6 +12,8 @@ export default function CustomerDetailPage() {
   const router = useRouter()
   const id = Number(router.params.id)
   const [detail, setDetail] = useState<CustomerDetail | null>(null)
+  const [loadError, setLoadError] = useState('')
+  const [loadingDetail, setLoadingDetail] = useState(false)
   const [orders, setOrders] = useState<Order[]>([])
   const [ordersTotal, setOrdersTotal] = useState(0)
   const [ordersPage, setOrdersPage] = useState(1)
@@ -24,6 +26,12 @@ export default function CustomerDetailPage() {
   const [addrAddress, setAddrAddress] = useState('')
 
   const load = async () => {
+    if (!Number.isFinite(id)) {
+      setLoadError('客户不存在')
+      return
+    }
+    setLoadingDetail(true)
+    setLoadError('')
     try {
       const data = await api.get<CustomerDetail>(`/api/customers/${id}`)
       setDetail(data)
@@ -38,7 +46,10 @@ export default function CustomerDetailPage() {
           .catch(() => undefined)
       }
     } catch (error) {
+      setLoadError((error as Error).message || '加载失败')
       Taro.showToast({ title: (error as Error).message, icon: 'none' })
+    } finally {
+      setLoadingDetail(false)
     }
   }
 
@@ -116,7 +127,22 @@ export default function CustomerDetailPage() {
     }
   }
 
-  if (!detail) return <View className="empty">加载中…</View>
+  if (!detail) {
+    if (loadError) {
+      return (
+        <View className="sm-empty">
+          <Text className="sm-empty-title">加载失败</Text>
+          <Text className="sm-empty-sub">{loadError}</Text>
+          <View className="sm-empty-actions">
+            <Button className="btn btn-primary" onClick={() => load()}>
+              重试
+            </Button>
+          </View>
+        </View>
+      )
+    }
+    return <View className="empty">{loadingDetail || Number.isFinite(id) ? '加载中…' : '客户不存在'}</View>
+  }
 
   return (
     <View className="customer-detail-page">
@@ -125,7 +151,7 @@ export default function CustomerDetailPage() {
           <View className="row-between">
             <Text className="customer-name">{detail.name}</Text>
             <Text
-              className="primary-text"
+              className="sm-action"
               onClick={() => Taro.navigateTo({ url: `/pages/customer-edit/index?id=${id}` })}
             >
               编辑
@@ -154,11 +180,11 @@ export default function CustomerDetailPage() {
               </Text>
               <View className="address-actions">
                 {item.is_default !== 1 && (
-                  <Text className="primary-text" onClick={() => setDefaultAddress(item.id)}>
+                  <Text className="sm-action" onClick={() => setDefaultAddress(item.id)}>
                     设为默认
                   </Text>
                 )}
-                <Text className="danger-text" onClick={() => removeAddress(item.id)}>
+                <Text className="sm-action sm-action-danger" onClick={() => removeAddress(item.id)}>
                   删除
                 </Text>
               </View>
@@ -174,8 +200,15 @@ export default function CustomerDetailPage() {
           <View className="new-customer">
             <Input className="input field" placeholder="标签，如 家 / 店 / 仓库" value={addrLabel} onInput={(event) => setAddrLabel(event.detail.value)} />
             <Input className="input field" placeholder="联系人" value={addrContact} onInput={(event) => setAddrContact(event.detail.value)} />
-            <Input className="input field" placeholder="电话" value={addrPhone} onInput={(event) => setAddrPhone(event.detail.value)} />
-            <Input className="input field" placeholder="详细地址 *" value={addrAddress} onInput={(event) => setAddrAddress(event.detail.value)} />
+            <Input className="input field" type="tel" maxlength={20} placeholder="电话" value={addrPhone} onInput={(event) => setAddrPhone(event.detail.value)} />
+            <Textarea
+              className="input field sm-textarea"
+              placeholder="详细地址 *"
+              value={addrAddress}
+              maxlength={200}
+              autoHeight
+              onInput={(event) => setAddrAddress(event.detail.value)}
+            />
             <View className="inline-actions">
               <Button className="btn btn-ghost" onClick={() => setShowAddressForm(false)}>
                 取消
@@ -196,11 +229,11 @@ export default function CustomerDetailPage() {
       {orders.map((order) => (
         <View
           key={order.id}
-          className="order-card"
+          className="sm-list-card"
           onClick={() => Taro.navigateTo({ url: `/pages/order-detail/index?id=${order.id}` })}
         >
           <View className="row-between">
-            <Text className="order-no">{order.order_no}</Text>
+            <Text className="sm-list-card-title">{order.order_no}</Text>
             <Text className={orderStatusTagClass(order)}>{orderStatusText(order)}</Text>
           </View>
           <Text className="muted">
@@ -213,7 +246,7 @@ export default function CustomerDetailPage() {
             <Text className="muted">
               {order.delivery_required ? (order.delivery_status === 'delivered' ? '已送达' : '待送货') : '到店自取'}
             </Text>
-            <Text>
+            <Text className="price-text sm-list-card-total">
               {formatFen(order.total)}
               {orderRemaining(order) > 0 ? ` · 未收 ${formatFen(orderRemaining(order))}` : ''}
             </Text>

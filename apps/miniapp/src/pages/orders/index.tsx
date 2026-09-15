@@ -1,8 +1,11 @@
 import { useRef, useState } from 'react'
-import Taro, { useDidShow, useReachBottom, useRouter } from '@tarojs/taro'
-import { Button, Input, Text, View } from '@tarojs/components'
+import Taro, { useDidShow, usePullDownRefresh, useReachBottom, useRouter } from '@tarojs/taro'
+import { Text, View } from '@tarojs/components'
 import type { Order } from '@sm/shared'
 import { api } from '../../api/client'
+import { EmptyState } from '../../components/empty-state'
+import { ListLoading } from '../../components/list-loading'
+import { SearchBox } from '../../components/search-box'
 import { useAuthGuard } from '../../utils/auth'
 import { consumePendingOrdersFilter } from '../../utils/orderFilter'
 import { formatFen, orderRemaining, orderStatusTagClass, orderStatusText } from '../../utils/format'
@@ -17,17 +20,21 @@ export default function Orders() {
   const [filter, setFilter] = useState<Filter>(initial)
   const filterRef = useRef<Filter>(initial)
   const [keyword, setKeyword] = useState('')
+  const keywordRef = useRef('')
   const [items, setItems] = useState<Order[]>([])
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(false)
-  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const loadingRef = useRef(false)
 
-  const load = async (nextPage: number, nextFilter = filter, append = false) => {
+  const load = async (nextPage: number, nextFilter = filterRef.current, append = false) => {
+    if (append && loadingRef.current) return
+    loadingRef.current = true
     setLoading(true)
     try {
       const query = new URLSearchParams()
-      if (keyword.trim()) query.set('q', keyword.trim())
+      const q = keywordRef.current.trim()
+      if (q) query.set('q', q)
       if (nextFilter === 'unpaid') query.set('only_unpaid', '1')
       if (nextFilter === 'pending') query.set('delivery_status', 'pending')
       query.set('page', String(nextPage))
@@ -39,6 +46,7 @@ export default function Orders() {
     } catch (error) {
       Taro.showToast({ title: (error as Error).message, icon: 'none' })
     } finally {
+      loadingRef.current = false
       setLoading(false)
     }
   }
@@ -58,16 +66,19 @@ export default function Orders() {
     if (!loading && items.length < total) load(page + 1, filter, true)
   })
 
+  usePullDownRefresh(() => {
+    load(1, filterRef.current).finally(() => Taro.stopPullDownRefresh())
+  })
+
   const switchFilter = (next: Filter) => {
     setFilter(next)
     filterRef.current = next
     load(1, next)
   }
 
-  const onKeywordInput = (value: string) => {
+  const onKeywordChange = (value: string) => {
+    keywordRef.current = value
     setKeyword(value)
-    if (searchTimer.current) clearTimeout(searchTimer.current)
-    searchTimer.current = setTimeout(() => load(1), 350)
   }
 
   const filters: Array<{ value: Filter; label: string }> = [
@@ -80,26 +91,12 @@ export default function Orders() {
     <View className="orders-page">
       <View className="list-header">
         <View className="toolbar">
-          <View className="sm-search">
-            <Text className="sm-search-icon">🔍</Text>
-            <Input
-              className="sm-search-input"
-              placeholder="搜索单号 / 客户"
-              value={keyword}
-              confirmType="search"
-              onInput={(event) => onKeywordInput(event.detail.value)}
-              onConfirm={() => load(1)}
-            />
-            {keyword ? (
-              <Text className="sm-search-clear" onClick={() => {
-                setKeyword('')
-                if (searchTimer.current) clearTimeout(searchTimer.current)
-                load(1, filterRef.current)
-              }}>
-                ✕
-              </Text>
-            ) : null}
-          </View>
+          <SearchBox
+            value={keyword}
+            onChange={onKeywordChange}
+            onSearch={() => load(1, filterRef.current)}
+            placeholder="搜索单号 / 客户"
+          />
         </View>
         <View className="sm-chips">
           {filters.map((item) => (
@@ -148,25 +145,25 @@ export default function Orders() {
       ))}
 
       {!loading && !items.length && (
-        <View className="sm-empty">
-          <Text className="sm-empty-title">暂无订单</Text>
-          <Text className="sm-empty-sub">开单后会出现在这里，可按待收款/待送货筛选</Text>
-          <View className="sm-empty-actions">
-            <Button
-              className="btn btn-primary"
-              onClick={() => Taro.switchTab({ url: '/pages/order-new/index' })}
-            >
-              去开单
-            </Button>
-          </View>
-        </View>
+        <EmptyState
+          title="暂无订单"
+          sub="开单后会出现在这里，可按待收款/待送货筛选"
+          actions={[
+            {
+              label: '去开单',
+              primary: true,
+              onClick: () => Taro.switchTab({ url: '/pages/order-new/index' }),
+            },
+          ]}
+        />
       )}
-      {loading && <View className="empty">加载中…</View>}
-      {!loading && items.length > 0 && (
-        <View className="sm-list-footer">
-          {items.length < total ? '上滑加载更多…' : `到底了，共 ${total} 单`}
-        </View>
-      )}
+      <ListLoading
+        loading={loading}
+        hasItems={items.length > 0}
+        shown={items.length}
+        total={total}
+        unit="单"
+      />
     </View>
   )
 }

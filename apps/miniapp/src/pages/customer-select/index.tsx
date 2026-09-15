@@ -1,8 +1,9 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Taro, { useDidShow, useReachBottom } from '@tarojs/taro'
-import { Button, Input, Text, View } from '@tarojs/components'
+import { Button, Text, View } from '@tarojs/components'
 import type { CustomerListItem } from '@sm/shared'
 import { api } from '../../api/client'
+import { SearchBox } from '../../components/search-box'
 import { useAuthGuard } from '../../utils/auth'
 import { formatFen } from '../../utils/format'
 import './index.scss'
@@ -10,21 +11,23 @@ import './index.scss'
 export default function CustomerSelect() {
   useAuthGuard()
   const [keyword, setKeyword] = useState('')
+  const keywordRef = useRef('')
   const [items, setItems] = useState<CustomerListItem[]>([])
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(false)
-  const keywordRef = useRef('')
   const requestRef = useRef(0)
+  const loadingRef = useRef(false)
 
-  const load = async (nextPage: number, append = false, value?: string) => {
-    const q = (value ?? keywordRef.current).trim()
-    keywordRef.current = q
+  const load = async (nextPage: number, append = false) => {
+    if (append && loadingRef.current) return
     const request = requestRef.current + 1
     requestRef.current = request
-    if (!append) setLoading(true)
+    loadingRef.current = true
+    setLoading(true)
     try {
       const query = new URLSearchParams()
+      const q = keywordRef.current.trim()
       if (q) query.set('q', q)
       query.set('page', String(nextPage))
       query.set('page_size', '20')
@@ -39,7 +42,10 @@ export default function CustomerSelect() {
       if (requestRef.current !== request) return
       Taro.showToast({ title: (error as Error).message, icon: 'none' })
     } finally {
-      if (requestRef.current === request) setLoading(false)
+      if (requestRef.current === request) {
+        loadingRef.current = false
+        setLoading(false)
+      }
     }
   }
 
@@ -60,22 +66,25 @@ export default function CustomerSelect() {
   }
 
   const createNew = () => {
-    if (keyword.trim()) {
-      Taro.setStorageSync('sm_customer_draft_name', keyword.trim())
+    if (keywordRef.current.trim()) {
+      Taro.setStorageSync('sm_customer_draft_name', keywordRef.current.trim())
     }
     Taro.navigateTo({ url: '/pages/customer-edit/index?select=1' })
+  }
+
+  const onKeywordChange = (value: string) => {
+    keywordRef.current = value
+    setKeyword(value)
   }
 
   return (
     <View className="customer-select-page">
       <View className="toolbar">
-        <Input
-          className="input toolbar-input"
-          placeholder="搜索姓名 / 电话 / 地址"
+        <SearchBox
           value={keyword}
-          confirmType="search"
-          onInput={(event) => setKeyword(event.detail.value)}
-          onConfirm={() => load(1, false)}
+          onChange={onKeywordChange}
+          onSearch={() => load(1)}
+          placeholder="搜索姓名 / 电话 / 地址"
         />
         <Button className="btn btn-primary toolbar-btn" onClick={createNew}>
           新建
@@ -99,13 +108,19 @@ export default function CustomerSelect() {
             </Text>
           </View>
         ))}
-        {!loading && !items.length && <View className="empty">没有找到客户，点右上角“新建”</View>}
-        {loading && <View className="empty">加载中…</View>}
+        {!loading && !items.length && (
+          <View className="sm-empty">
+            <Text className="sm-empty-title">没有找到客户</Text>
+            <Text className="sm-empty-sub">换个关键词，或点上方「新建」</Text>
+          </View>
+        )}
+        {loading && !items.length && <View className="empty">加载中…</View>}
         {!loading && items.length > 0 && (
           <View className="sm-list-footer">
             {items.length < total ? '上滑加载更多…' : `到底了，共 ${total} 位`}
           </View>
         )}
+        {loading && items.length > 0 && <View className="sm-list-footer">加载中…</View>}
       </View>
     </View>
   )

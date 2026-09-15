@@ -1,9 +1,13 @@
 import { useRef, useState } from 'react'
-import Taro, { useDidShow, useReachBottom } from '@tarojs/taro'
-import { Button, Input, Text, View } from '@tarojs/components'
+import Taro, { useDidShow, usePullDownRefresh, useReachBottom } from '@tarojs/taro'
+import { Button, Text, View } from '@tarojs/components'
 import type { Purchase } from '@sm/shared'
 import { api } from '../../api/client'
 import ScanFab from '../../components/scan-fab'
+import { EmptyState } from '../../components/empty-state'
+import { ListLoading } from '../../components/list-loading'
+import { SearchBox } from '../../components/search-box'
+import { StatusTag } from '../../components/status-tag'
 import { useAuthGuard } from '../../utils/auth'
 import { formatFen, PURCHASE_KIND_LABELS } from '../../utils/format'
 import './index.scss'
@@ -11,17 +15,21 @@ import './index.scss'
 export default function Purchases() {
   useAuthGuard()
   const [keyword, setKeyword] = useState('')
+  const keywordRef = useRef('')
   const [items, setItems] = useState<Purchase[]>([])
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(false)
-  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const loadingRef = useRef(false)
 
   const load = async (nextPage: number, append = false) => {
+    if (append && loadingRef.current) return
+    loadingRef.current = true
     setLoading(true)
     try {
       const query = new URLSearchParams()
-      if (keyword.trim()) query.set('q', keyword.trim())
+      const q = keywordRef.current.trim()
+      if (q) query.set('q', q)
       query.set('page', String(nextPage))
       query.set('page_size', '20')
       const data = await api.get<{ items: Purchase[]; total: number }>(`/api/purchases?${query.toString()}`)
@@ -31,6 +39,7 @@ export default function Purchases() {
     } catch (error) {
       Taro.showToast({ title: (error as Error).message, icon: 'none' })
     } finally {
+      loadingRef.current = false
       setLoading(false)
     }
   }
@@ -43,39 +52,25 @@ export default function Purchases() {
     if (!loading && items.length < total) load(page + 1, true)
   })
 
-  const onKeywordInput = (value: string) => {
+  usePullDownRefresh(() => {
+    load(1).finally(() => Taro.stopPullDownRefresh())
+  })
+
+  const onKeywordChange = (value: string) => {
+    keywordRef.current = value
     setKeyword(value)
-    if (searchTimer.current) clearTimeout(searchTimer.current)
-    searchTimer.current = setTimeout(() => load(1), 350)
   }
 
   return (
     <View className="purchases-page">
       <View className="list-header">
         <View className="toolbar">
-          <View className="sm-search">
-            <Text className="sm-search-icon">🔍</Text>
-            <Input
-              className="sm-search-input"
-              placeholder="搜索入库单号 / 供应商"
-              value={keyword}
-              confirmType="search"
-              onInput={(event) => onKeywordInput(event.detail.value)}
-              onConfirm={() => load(1)}
-            />
-            {keyword ? (
-              <Text
-                className="sm-search-clear"
-                onClick={() => {
-                  setKeyword('')
-                  if (searchTimer.current) clearTimeout(searchTimer.current)
-                  load(1)
-                }}
-              >
-                ✕
-              </Text>
-            ) : null}
-          </View>
+          <SearchBox
+            value={keyword}
+            onChange={onKeywordChange}
+            onSearch={() => load(1)}
+            placeholder="搜索入库单号 / 供应商"
+          />
           <View
             className="sm-new-btn"
             onClick={() => Taro.navigateTo({ url: '/pages/purchase-new/index' })}
@@ -93,9 +88,9 @@ export default function Purchases() {
         >
           <View className="row-between">
             <Text className="sm-list-card-title">{purchase.purchase_no}</Text>
-            <Text className={purchase.kind === 'goods_offset' ? 'tag tag-warn' : 'tag tag-muted'}>
+            <StatusTag tone={purchase.kind === 'goods_offset' ? 'warn' : 'muted'}>
               {PURCHASE_KIND_LABELS[purchase.kind]}
-            </Text>
+            </StatusTag>
           </View>
           <View className="row-between">
             <Text className="muted">
@@ -108,25 +103,24 @@ export default function Purchases() {
       ))}
 
       {!loading && !items.length && (
-        <View className="sm-empty">
-          <Text className="sm-empty-title">暂无入库记录</Text>
-          <Text className="sm-empty-sub">进货后记一笔，方便对账与比价</Text>
-          <View className="sm-empty-actions">
-            <Button
-              className="btn btn-primary"
-              onClick={() => Taro.navigateTo({ url: '/pages/purchase-new/index' })}
-            >
-              去入库
-            </Button>
-          </View>
-        </View>
+        <EmptyState
+          title="暂无入库记录"
+          sub="进货后记一笔，方便对账与比价"
+          actions={[
+            {
+              label: '去入库',
+              primary: true,
+              onClick: () => Taro.navigateTo({ url: '/pages/purchase-new/index' }),
+            },
+          ]}
+        />
       )}
-      {loading && <View className="empty">加载中…</View>}
-      {!loading && items.length > 0 && (
-        <View className="sm-list-footer">
-          {items.length < total ? '上滑加载更多…' : `到底了，共 ${total} 条`}
-        </View>
-      )}
+      <ListLoading
+        loading={loading}
+        hasItems={items.length > 0}
+        shown={items.length}
+        total={total}
+      />
       <View className="fab-spacer" />
       <ScanFab
         label="入库"

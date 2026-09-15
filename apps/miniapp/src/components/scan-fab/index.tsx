@@ -2,6 +2,7 @@ import Taro from '@tarojs/taro'
 import { Text, View } from '@tarojs/components'
 import { scanBarcode } from '../../utils/scan'
 import { scanAndGo } from '../../utils/scanGo'
+import { H5_TABBAR_HEIGHT, IS_WEAPP } from '../../utils/env'
 import './index.scss'
 
 export default function ScanFab({
@@ -31,8 +32,12 @@ export default function ScanFab({
     scanAndGo(code)
   }
 
+  const fabStyle = IS_WEAPP
+    ? undefined
+    : { bottom: `calc(${140 + H5_TABBAR_HEIGHT}px + env(safe-area-inset-bottom))` }
+
   return (
-    <View className="scan-fab" onClick={tap}>
+    <View className="scan-fab" style={fabStyle} onClick={tap}>
       {icon === 'camera' ? (
         <View className="scan-fab-camera">
           <View className="scan-fab-camera-top" />

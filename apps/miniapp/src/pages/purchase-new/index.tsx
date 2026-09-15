@@ -8,7 +8,13 @@ import { useAuthGuard } from '../../utils/auth'
 import { pickImages, uploadLocalImage } from '../../utils/media'
 import { scanBarcode } from '../../utils/scan'
 import { fenToYuan, formatFen, todayString, yuanToFen } from '../../utils/format'
+import { findLowPriceIssues, promptAfterPurchaseLowPrice } from '../../utils/priceGuard'
 import './index.scss'
+
+function normalizePurchaseCost(unitPriceFen: number, conversion: number): number {
+  const conv = Number.isFinite(conversion) && conversion > 0 ? conversion : 1
+  return Math.round(unitPriceFen / conv)
+}
 
 interface ItemRow {
   sku_id: number
@@ -18,6 +24,8 @@ interface ItemRow {
   conversion: string
   qty: string
   unit_price: string
+  retail_price?: number | null
+  friend_price?: number | null
 }
 
 interface OcrRowState extends OcrRow {
@@ -25,6 +33,8 @@ interface OcrRowState extends OcrRow {
   productName?: string
   unitName?: string
   conversion?: number
+  retail_price?: number | null
+  friend_price?: number | null
   status: 'unmatched' | 'matched'
 }
 
@@ -86,6 +96,8 @@ export default function PurchaseNew() {
         conversion: '1',
         qty: '1',
         unit_price: sku.latest_purchase_price ? fenToYuan(sku.latest_purchase_price) : '',
+        retail_price: sku.retail_price,
+        friend_price: sku.friend_price,
       },
     ])
     setResults([])
@@ -172,6 +184,7 @@ export default function PurchaseNew() {
   }
 
   const submit = async () => {
+    if (busy) return
     if (!items.length) {
       Taro.showToast({ title: '请先添加入库商品', icon: 'none' })
       return
@@ -219,10 +232,25 @@ export default function PurchaseNew() {
         price_updates: priceUpdates,
       })
       Taro.showToast({ title: `入库成功 ${purchase.purchase_no}`, icon: 'success' })
+      // Batch/OCR: allow the purchase to land first, then nudge about unprofitable sell prices.
+      const syncedRetail = new Map(priceUpdates.map((update) => [update.sku_id, update.retail_price]))
+      const lowPriceLines = items.map((item) => {
+        const cost = normalizePurchaseCost(yuanToFen(item.unit_price), Number(item.conversion) || 1)
+        const retail = syncedRetail.get(item.sku_id) ?? item.retail_price ?? null
+        return {
+          label: `${item.productName}${item.specName ? `·${item.specName}` : ''}`,
+          issues: findLowPriceIssues({
+            retail,
+            friend: item.friend_price ?? null,
+            purchase: cost,
+          }),
+        }
+      })
       setItems([])
       setOcrRows([])
       setImageKeys([])
-      setTimeout(() => Taro.redirectTo({ url: `/pages/purchase-detail/index?id=${purchase.id}` }), 500)
+      await promptAfterPurchaseLowPrice(lowPriceLines)
+      setTimeout(() => Taro.redirectTo({ url: `/pages/purchase-detail/index?id=${purchase.id}` }), 300)
     } catch (error) {
       Taro.showToast({ title: (error as Error).message, icon: 'none' })
     } finally {
@@ -289,13 +317,16 @@ export default function PurchaseNew() {
         skuId = active[skuSheet.tapIndex]?.id
       }
       if (!skuId) return
+      const matchedSku = detail.skus.find((sku) => sku.id === skuId)
       setOcrRows((previous) => {
         const next = [...previous]
         next[index] = {
           ...next[index]!,
           sku_id: skuId,
           productName: detail.product.name,
-          unitName: next[index]!.unit || detail.skus.find((sku) => sku.id === skuId)?.sale_unit || '件',
+          unitName: next[index]!.unit || matchedSku?.sale_unit || '件',
+          retail_price: matchedSku?.retail_price ?? null,
+          friend_price: matchedSku?.friend_price ?? null,
           status: 'matched',
         }
         return next
@@ -332,6 +363,8 @@ export default function PurchaseNew() {
         conversion: '1',
         qty: String(row.qty || 1),
         unit_price: row.unit_price === null ? '' : String(row.unit_price),
+        retail_price: row.retail_price ?? null,
+        friend_price: row.friend_price ?? null,
       },
     ])
     setOcrRows((previous) => previous.filter((_, i) => i !== index))

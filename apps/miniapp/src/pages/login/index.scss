@@ -2,7 +2,13 @@
   min-height: 100vh;
   padding: 140px 48px 60px;
   box-sizing: border-box;
-  background: linear-gradient(165deg, #2563eb 0%, #60a5fa 42%, #f3f4f6 42.1%, #f3f4f6 100%);
+  background: linear-gradient(
+    165deg,
+    var(--sm-primary, #2563eb) 0%,
+    #60a5fa 42%,
+    var(--sm-bg, #f3f4f6) 42.1%,
+    var(--sm-bg, #f3f4f6) 100%
+  );
 }
 
 .login-logo {

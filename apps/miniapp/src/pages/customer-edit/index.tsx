@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import Taro, { useDidShow, useRouter } from '@tarojs/taro'
-import { Button, Input, Text, View } from '@tarojs/components'
+import { Button, Input, Text, Textarea, View } from '@tarojs/components'
 import type { Customer } from '@sm/shared'
 import { api } from '../../api/client'
 import { useAuthGuard } from '../../utils/auth'
@@ -47,6 +47,7 @@ export default function CustomerEdit() {
   })
 
   const save = async () => {
+    if (busy) return
     if (!name.trim()) {
       Taro.showToast({ title: '请填写客户姓名', icon: 'none' })
       return
@@ -88,15 +89,29 @@ export default function CustomerEdit() {
         </View>
         <View className="field">
           <Text className="field-label">联系电话</Text>
-          <Input className="input" placeholder="可留空" value={phone} onInput={(event) => setPhone(event.detail.value)} />
+          <Input className="input" type="tel" maxlength={20} placeholder="可留空" value={phone} onInput={(event) => setPhone(event.detail.value)} />
         </View>
         <View className="field">
           <Text className="field-label">默认送货地址</Text>
-          <Input className="input" placeholder="可留空，送货时也能临时填" value={address} onInput={(event) => setAddress(event.detail.value)} />
+          <Textarea
+            className="input sm-textarea"
+            placeholder="可留空，送货时也能临时填"
+            value={address}
+            maxlength={200}
+            autoHeight
+            onInput={(event) => setAddress(event.detail.value)}
+          />
         </View>
         <View className="field">
           <Text className="field-label">备注</Text>
-          <Input className="input" placeholder="可留空" value={notes} onInput={(event) => setNotes(event.detail.value)} />
+          <Textarea
+            className="input sm-textarea"
+            placeholder="可留空"
+            value={notes}
+            maxlength={200}
+            autoHeight
+            onInput={(event) => setNotes(event.detail.value)}
+          />
         </View>
       </View>
 

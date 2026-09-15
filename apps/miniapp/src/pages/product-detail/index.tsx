@@ -36,12 +36,44 @@ export default function ProductDetailPage() {
   const router = useRouter()
   const id = Number(router.params.id)
   const [detail, setDetail] = useState<ProductDetail | null>(null)
+  const [loadError, setLoadError] = useState('')
+  const [loadingDetail, setLoadingDetail] = useState(false)
   const [tab, setTab] = useState<Tab>('overview')
-  const [showSensitive, setShowSensitive] = useState(false)
+  const [holdSkuId, setHoldSkuId] = useState<number | null>(null)
   const [showSkuForm, setShowSkuForm] = useState(false)
   const [skuSpec, setSkuSpec] = useState('')
   const [skuRetail, setSkuRetail] = useState('')
   const [statsSkuId, setStatsSkuId] = useState<number | null>(null)
+
+  const priceIssues = useMemo(() => {
+    if (!detail) return [] as Array<{ skuId: number; skuName: string; kind: 'retail' | 'friend'; sell: number; cost: number }>
+    const issues: Array<{ skuId: number; skuName: string; kind: 'retail' | 'friend'; sell: number; cost: number }> = []
+    for (const sku of detail.skus) {
+      if (sku.status !== 'active') continue
+      const cost = sku.latest_purchase_price
+      if (cost == null || cost <= 0) continue
+      const skuName = sku.spec_name || '默认版本'
+      if (sku.retail_price < cost) {
+        issues.push({ skuId: sku.id, skuName, kind: 'retail', sell: sku.retail_price, cost })
+      }
+      if (sku.friend_price != null && sku.friend_price < cost) {
+        issues.push({ skuId: sku.id, skuName, kind: 'friend', sell: sku.friend_price, cost })
+      }
+    }
+    return issues
+  }, [detail])
+
+  /** SKUs whose friend price is under cost — mark only inside the held sensitive panel. */
+  const friendLowSkuIds = useMemo(
+    () => new Set(priceIssues.filter((issue) => issue.kind === 'friend').map((issue) => issue.skuId)),
+    [priceIssues],
+  )
+
+  /** Any SKU with retail or friend under cost — badge visible without opening the eye. */
+  const lowPriceSkuIds = useMemo(
+    () => new Set(priceIssues.map((issue) => issue.skuId)),
+    [priceIssues],
+  )
 
   const productBarcodes = useMemo(() => {
     if (!detail) return [] as Array<{ id: number; code: string }>
@@ -60,17 +92,34 @@ export default function ProductDetailPage() {
   const primaryCode = productBarcodes[0]?.code || ''
 
   const load = async () => {
+    if (!Number.isFinite(id)) {
+      setLoadError('商品不存在')
+      return
+    }
+    setLoadingDetail(true)
+    setLoadError('')
     try {
       const data = await api.get<ProductDetail>(`/api/products/${id}`)
       setDetail(data)
     } catch (error) {
+      setLoadError((error as Error).message || '加载失败')
       Taro.showToast({ title: (error as Error).message, icon: 'none' })
+    } finally {
+      setLoadingDetail(false)
     }
   }
 
   useDidShow(() => {
-    if (Number.isFinite(id)) load()
+    load()
   })
+
+  const beginSensitive = (skuId: number) => {
+    setHoldSkuId(skuId)
+  }
+
+  const endSensitive = () => {
+    setHoldSkuId(null)
+  }
 
   const trends = useMemo(() => {
     if (!detail) {
@@ -147,14 +196,31 @@ export default function ProductDetailPage() {
   const archive = async () => {
     const confirm = await Taro.showModal({ title: '下架商品', content: '下架后不再用于开单/入库，历史订单不受影响。确定吗？' })
     if (!confirm.confirm) return
-    await api.delete(`/api/products/${id}`)
-    Taro.showToast({ title: '已下架', icon: 'success' })
-    Taro.setStorageSync('sm_products_dirty', 1)
-    setTimeout(() => Taro.navigateBack(), 400)
+    try {
+      await api.delete(`/api/products/${id}`)
+      Taro.showToast({ title: '已下架', icon: 'success' })
+      Taro.setStorageSync('sm_products_dirty', 1)
+      setTimeout(() => Taro.navigateBack(), 400)
+    } catch (error) {
+      Taro.showToast({ title: (error as Error).message, icon: 'none' })
+    }
   }
 
   if (!detail) {
-    return <View className="empty">加载中…</View>
+    if (loadError) {
+      return (
+        <View className="sm-empty">
+          <Text className="sm-empty-title">加载失败</Text>
+          <Text className="sm-empty-sub">{loadError}</Text>
+          <View className="sm-empty-actions">
+            <Button className="btn btn-primary" onClick={() => load()}>
+              重试
+            </Button>
+          </View>
+        </View>
+      )
+    }
+    return <View className="empty">{loadingDetail || Number.isFinite(id) ? '加载中…' : '商品不存在'}</View>
   }
 
   const { product, skus } = detail
@@ -213,25 +279,34 @@ export default function ProductDetailPage() {
                     {sku.stock_status === 'out_of_stock' ? '缺货中' : '在售'}
                   </Text>
                 </View>
+                {lowPriceSkuIds.has(sku.id) && (
+                  <Text className="sku-price-warn">有售价低于进货价，建议调整</Text>
+                )}
                 <View className="price-row">
                   <View className="price-cell">
                     <Text className="muted">零售价</Text>
                     <Text className="price-text">{formatFen(sku.retail_price)}</Text>
                   </View>
                   <View
-                    className="eye-btn"
-                    onTouchStart={() => setShowSensitive(true)}
-                    onTouchEnd={() => setShowSensitive(false)}
-                    onTouchCancel={() => setShowSensitive(false)}
+                    className={`eye-btn ${holdSkuId === sku.id ? 'eye-btn-active' : ''}`}
+                    onTouchStart={() => beginSensitive(sku.id)}
+                    onTouchEnd={endSensitive}
+                    onTouchCancel={endSensitive}
+                    onMouseDown={() => beginSensitive(sku.id)}
+                    onMouseUp={endSensitive}
+                    onMouseLeave={endSensitive}
                   >
-                    <EyeIcon open={showSensitive} />
+                    <EyeIcon open={holdSkuId === sku.id} />
                   </View>
                 </View>
-                {showSensitive && (
+                {holdSkuId === sku.id && (
                   <View className="price-grid">
                     <View className="price-cell">
                       <Text className="muted">友情价</Text>
-                      <Text>{formatFen(sku.friend_price)}</Text>
+                      <Text className={friendLowSkuIds.has(sku.id) ? 'price-warn-value' : undefined}>
+                        {friendLowSkuIds.has(sku.id) ? '! ' : ''}
+                        {formatFen(sku.friend_price)}
+                      </Text>
                     </View>
                     <View className="price-cell">
                       <Text className="muted">最近入库价</Text>

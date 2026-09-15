@@ -106,13 +106,20 @@ taro-textarea-core.notes-input,
 }
 
 .required-star {
-  color: #e5484d;
+  color: var(--sm-danger, #dc2626);
 }
 
 .field-error {
-  color: #e5484d;
+  color: var(--sm-danger, #dc2626);
   font-size: 24px;
   margin-top: 8px;
+}
+
+.field-warn {
+  color: var(--sm-warn, #d97706);
+  font-size: 24px;
+  margin-top: 8px;
+  font-weight: 600;
 }
 
 .collapse-head {
@@ -127,7 +134,7 @@ taro-textarea-core.notes-input,
 }
 
 .collapse-arrow {
-  color: #8a8f99;
+  color: var(--sm-ink-3, #9ca3af);
   font-size: 28px;
   padding: 8px 4px 8px 24px;
 }
@@ -169,7 +176,7 @@ taro-textarea-core.notes-input,
   align-items: center;
   justify-content: center;
   font-size: 48px;
-  color: #8a8f99;
+  color: var(--sm-ink-3, #9ca3af);
   background: #f5f6f8;
   border: 1px dashed #d9dee5;
   box-sizing: border-box;
@@ -224,7 +231,7 @@ taro-textarea-core.notes-input,
   padding: 12px 28px;
   border-radius: 999px;
   background: #f5f6f8;
-  color: #5c6470;
+  color: var(--sm-ink-2, #6b7280);
   font-size: 26px;
   transition: transform 160ms ease-out;
 }

@@ -58,7 +58,7 @@ export default function Me() {
   }
 
   const addUser = async () => {
-    if (!newUsername.trim() || newUserPassword.length < 6) {
+    if (newUsername.trim().length < 2 || newUserPassword.length < 6) {
       Taro.showToast({ title: '账号至少 2 位、密码至少 6 位', icon: 'none' })
       return
     }
@@ -143,8 +143,7 @@ export default function Me() {
           <View
             className="stat"
             onClick={() => {
-              setPendingOrdersFilter('all')
-              Taro.switchTab({ url: '/pages/products/index' })
+              Taro.navigateTo({ url: '/pages/product-list/index?stock=1' })
             }}
           >
             <Text className="stat-value">{report.out_of_stock_count}</Text>

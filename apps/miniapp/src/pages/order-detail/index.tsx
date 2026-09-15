@@ -33,6 +33,8 @@ export default function OrderDetailPage() {
   const router = useRouter()
   const id = Number(router.params.id)
   const [order, setOrder] = useState<OrderWithItems | null>(null)
+  const [loadError, setLoadError] = useState('')
+  const [loadingDetail, setLoadingDetail] = useState(false)
   const [showPay, setShowPay] = useState(false)
   const [method, setMethod] = useState<PayMethod>('wechat')
   const [amount, setAmount] = useState('')
@@ -43,17 +45,26 @@ export default function OrderDetailPage() {
   const [busy, setBusy] = useState(false)
 
   const load = async () => {
+    if (!Number.isFinite(id)) {
+      setLoadError('订单不存在')
+      return
+    }
+    setLoadingDetail(true)
+    setLoadError('')
     try {
       const data = await api.get<OrderWithItems>(`/api/orders/${id}`)
       setOrder(data)
       setAmount(fenToYuan(data.remaining))
     } catch (error) {
+      setLoadError((error as Error).message || '加载失败')
       Taro.showToast({ title: (error as Error).message, icon: 'none' })
+    } finally {
+      setLoadingDetail(false)
     }
   }
 
   useDidShow(() => {
-    if (Number.isFinite(id)) load()
+    load()
   })
 
   const deliver = async () => {
@@ -185,12 +196,33 @@ export default function OrderDetailPage() {
   const voidOrder = async () => {
     const confirm = await Taro.showModal({ title: '作废订单', content: '作废后订单不再计入欠款，确定吗？' })
     if (!confirm.confirm) return
-    await api.post(`/api/orders/${id}/void`)
-    Taro.showToast({ title: '已作废', icon: 'success' })
-    load()
+    try {
+      await api.post(`/api/orders/${id}/void`)
+      Taro.showToast({ title: '已作废', icon: 'success' })
+      load()
+    } catch (error) {
+      Taro.showToast({ title: (error as Error).message, icon: 'none' })
+    }
   }
 
-  if (!order) return <View className="empty">加载中…</View>
+  if (!order) {
+    if (loadError) {
+      return (
+        <View className="sm-empty">
+          <Text className="sm-empty-title">加载失败</Text>
+          <Text className="sm-empty-sub">{loadError}</Text>
+          <View className="sm-empty-actions">
+            <Button className="btn btn-primary" onClick={() => load()}>
+              重试
+            </Button>
+          </View>
+        </View>
+      )
+    }
+    return (
+      <View className="empty">{loadingDetail || Number.isFinite(id) ? '加载中…' : '订单不存在'}</View>
+    )
+  }
 
   const methods: PayMethod[] = ['wechat', 'alipay', 'cash', 'goods']
 

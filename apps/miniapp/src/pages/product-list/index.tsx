@@ -66,8 +66,8 @@ export default function ProductList() {
 
   const loadCategories = () => {
     api
-      .get<string[]>('/api/products/categories')
-      .then(setCategories)
+      .get<Array<{ id: number; name: string }>>('/api/categories')
+      .then((rows) => setCategories(rows.map((row) => row.name)))
       .catch(() => undefined)
   }
 
@@ -115,61 +115,63 @@ export default function ProductList() {
 
   return (
     <View className="product-list-page">
-      <View className="toolbar">
-        <View className="sm-search">
-          <Text className="sm-search-icon">🔍</Text>
-          <Input
-            className="sm-search-input"
-            placeholder="搜名称 / 别名 / 分类 / 商品码"
-            value={query.q}
-            confirmType="search"
-            onInput={(event) => onKeywordInput(event.detail.value)}
-            onConfirm={() => {
-              if (searchTimer.current) clearTimeout(searchTimer.current)
-              load(1, false, queryRef.current).catch(() => undefined)
-            }}
-          />
-          {query.q ? (
-            <Text
-              className="sm-search-clear"
-              onClick={() => {
+      <View className="list-header">
+        <View className="toolbar">
+          <View className="sm-search">
+            <Text className="sm-search-icon">🔍</Text>
+            <Input
+              className="sm-search-input"
+              placeholder="搜名称 / 别名 / 分类 / 商品码"
+              value={query.q}
+              confirmType="search"
+              onInput={(event) => onKeywordInput(event.detail.value)}
+              onConfirm={() => {
                 if (searchTimer.current) clearTimeout(searchTimer.current)
-                load(1, false, updateQuery({ q: '' })).catch(() => undefined)
+                load(1, false, queryRef.current).catch(() => undefined)
               }}
-            >
-              ✕
-            </Text>
-          ) : null}
-        </View>
-      </View>
-
-      <View className="filter-scroll">
-        <View
-          className={`sm-chip ${!query.stockOnly && !query.category ? 'sm-chip-active' : ''}`}
-          onClick={() => load(1, false, updateQuery({ stockOnly: false, category: '' })).catch(() => undefined)}
-        >
-          全部
-        </View>
-        <View
-          className={`sm-chip ${query.stockOnly ? 'sm-chip-active' : ''}`}
-          onClick={() => load(1, false, updateQuery({ stockOnly: !queryRef.current.stockOnly })).catch(() => undefined)}
-        >
-          只看缺货
-        </View>
-        {categories.map((name) => (
-          <View
-            key={name}
-            className={`sm-chip ${query.category === name ? 'sm-chip-active' : ''}`}
-            onClick={() =>
-              load(1, false, updateQuery({ category: queryRef.current.category === name ? '' : name })).catch(
-                () => undefined,
-              )
-            }
-          >
-            {name}
+            />
+            {query.q ? (
+              <Text
+                className="sm-search-clear"
+                onClick={() => {
+                  if (searchTimer.current) clearTimeout(searchTimer.current)
+                  load(1, false, updateQuery({ q: '' })).catch(() => undefined)
+                }}
+              >
+                ✕
+              </Text>
+            ) : null}
           </View>
-        ))}
-        <Text className="muted sm-chip-total">共 {total} 件</Text>
+        </View>
+
+        <View className="filter-scroll">
+          <View
+            className={`sm-chip ${!query.stockOnly && !query.category ? 'sm-chip-active' : ''}`}
+            onClick={() => load(1, false, updateQuery({ stockOnly: false, category: '' })).catch(() => undefined)}
+          >
+            全部
+          </View>
+          <View
+            className={`sm-chip ${query.stockOnly ? 'sm-chip-active' : ''}`}
+            onClick={() => load(1, false, updateQuery({ stockOnly: !queryRef.current.stockOnly })).catch(() => undefined)}
+          >
+            只看缺货
+          </View>
+          {categories.map((name) => (
+            <View
+              key={name}
+              className={`sm-chip ${query.category === name ? 'sm-chip-active' : ''}`}
+              onClick={() =>
+                load(1, false, updateQuery({ category: queryRef.current.category === name ? '' : name })).catch(
+                  () => undefined,
+                )
+              }
+            >
+              {name}
+            </View>
+          ))}
+          <Text className="muted sm-chip-total">共 {total} 件</Text>
+        </View>
       </View>
 
       {items.map((product) => (
@@ -233,6 +235,7 @@ export default function ProductList() {
         </View>
       )}
 
+      {loading && items.length > 0 && <View className="sm-list-footer">加载中…</View>}
       {!loading && items.length > 0 && (
         <View className="sm-list-footer">
           {items.length < total ? '上滑加载更多…' : `到底了，共 ${total} 件`}

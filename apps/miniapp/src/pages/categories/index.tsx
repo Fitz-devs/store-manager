@@ -95,7 +95,12 @@ export default function CategoriesPage() {
 
       <View className="section-title">全部分类</View>
       <View className="card">
-        {!items.length && <Text className="muted">还没有分类，先在上面添加</Text>}
+        {!items.length && (
+          <View className="sm-empty">
+            <Text className="sm-empty-title">还没有分类</Text>
+            <Text className="sm-empty-sub">在上方添加，商品编辑时可直接勾选</Text>
+          </View>
+        )}
         {items.map((row) => (
           <View key={row.id} className="list-row">
             {editingId === row.id ? (
@@ -106,10 +111,10 @@ export default function CategoriesPage() {
                   onInput={(event) => setEditName(event.detail.value)}
                 />
                 <View className="row-actions">
-                  <Text className="primary-text" onClick={() => rename(row.id)}>
+                  <Text className="sm-action" onClick={() => rename(row.id)}>
                     保存
                   </Text>
-                  <Text className="muted" onClick={() => setEditingId(null)}>
+                  <Text className="sm-action muted" onClick={() => setEditingId(null)}>
                     取消
                   </Text>
                 </View>
@@ -119,7 +124,7 @@ export default function CategoriesPage() {
                 <Text className="list-row-main">{row.name}</Text>
                 <View className="row-actions">
                   <Text
-                    className="primary-text"
+                    className="sm-action"
                     onClick={() => {
                       setEditingId(row.id)
                       setEditName(row.name)
@@ -127,7 +132,7 @@ export default function CategoriesPage() {
                   >
                     编辑
                   </Text>
-                  <Text className="danger-text" onClick={() => remove(row)}>
+                  <Text className="sm-action sm-action-danger" onClick={() => remove(row)}>
                     删除
                   </Text>
                 </View>
