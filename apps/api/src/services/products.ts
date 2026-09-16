@@ -2,6 +2,7 @@ import type { Kysely, Selectable } from 'kysely'
 import type {
   Barcode,
   LinkedProduct,
+  OcrFromRowResult,
   Paginated,
   PriceHistoryEntry,
   Prize,
@@ -347,6 +348,7 @@ export async function getProductDetail(db: Kysely<DB>, id: number): Promise<Prod
           'purchases.total_amount',
           'purchases.note as p_note',
           'purchases.image_keys',
+          'purchases.ocr_raw',
           'purchases.operator_id as p_operator_id',
           'purchases.ordered_at',
           'purchases.created_at as p_created_at',
@@ -370,6 +372,7 @@ export async function getProductDetail(db: Kysely<DB>, id: number): Promise<Prod
         total_amount: row.total_amount,
         note: row.p_note,
         image_keys: row.image_keys,
+        ocr_raw: row.ocr_raw,
         operator_id: row.p_operator_id,
         ordered_at: row.ordered_at,
         created_at: row.p_created_at,
@@ -499,6 +502,134 @@ export async function addProductLink(
 
 export async function deleteProductLink(db: Kysely<DB>, linkId: number): Promise<void> {
   await db.deleteFrom('product_links').where('id', '=', linkId).execute()
+}
+
+export interface OcrFromRowInput {
+  name: string
+  box_code?: string | null | undefined
+  unit_code?: string | null | undefined
+  conversion: number
+  unit_price_fen?: number | null | undefined
+  spec_hint?: string | null | undefined
+  sale_unit: string
+}
+
+export async function createProductsFromOcrRow(
+  db: Kysely<DB>,
+  d1: D1Database,
+  input: OcrFromRowInput,
+  operatorId: number,
+): Promise<OcrFromRowResult> {
+  const boxCode = input.box_code?.trim() || null
+  const unitCode = input.unit_code?.trim() || null
+  if (!boxCode && !unitCode) {
+    throw new ApiError(400, 'VALIDATION', '至少需要整箱码或单件码')
+  }
+
+  async function findByCode(code: string): Promise<number | null> {
+    const row = await db.selectFrom('barcodes').select('sku_id').where('code', '=', code).executeTakeFirst()
+    return row?.sku_id ?? null
+  }
+
+  if (boxCode) {
+    const existing = await findByCode(boxCode)
+    if (existing) throw new ApiError(409, 'BARCODE_EXISTS', `整箱码已存在（sku ${existing}），请改用匹配商品`)
+  }
+  if (unitCode) {
+    const existing = await findByCode(unitCode)
+    if (existing) throw new ApiError(409, 'BARCODE_EXISTS', `单件码已存在（sku ${existing}），请改用匹配商品`)
+  }
+
+  const price = input.unit_price_fen ?? null
+  const baseName = input.name.trim()
+  const boxDetail = await createProduct(
+    db,
+    d1,
+    {
+      name: baseName,
+      sku: {
+        spec_name: input.spec_hint?.trim() || '整箱',
+        sale_unit: input.sale_unit.trim() || '箱',
+        retail_price: 0,
+        friend_price: null,
+      },
+      purchase_price: price,
+      barcodes: boxCode ? [{ code: boxCode, is_primary: true }] : [],
+    },
+    operatorId,
+  )
+  const boxSku = boxDetail.skus[0]
+  if (!boxSku) throw new ApiError(500, 'CREATE_FAILED', '箱装规格创建失败')
+
+  let unitSide: { product_id: number; sku_id: number; name: string; sale_unit: string; barcode: string | null } | null = null
+  let linkId: number | null = null
+  if (unitCode) {
+    let unitDetail: ProductDetail
+    try {
+      unitDetail = await createProduct(
+        db,
+        d1,
+        {
+          name: baseName,
+          sku: {
+            spec_name: '单件',
+            sale_unit: '件',
+            retail_price: 0,
+            friend_price: null,
+          },
+          purchase_price: price === null ? null : Math.round(price / Math.max(1, input.conversion)),
+          barcodes: [{ code: unitCode, is_primary: true }],
+        },
+        operatorId,
+      )
+    } catch (error) {
+      // 回滚已建箱装，避免半截数据
+      await db
+        .updateTable('products')
+        .set({ status: 'archived', updated_at: nowIso() })
+        .where('id', '=', boxDetail.product.id)
+        .execute()
+        .catch(() => undefined)
+      if (boxCode) {
+        await db.deleteFrom('barcodes').where('code', '=', boxCode).execute().catch(() => undefined)
+      }
+      throw error
+    }
+    const unitSku = unitDetail.skus[0]
+    if (!unitSku) throw new ApiError(500, 'CREATE_FAILED', '单件规格创建失败')
+    unitSide = {
+      product_id: unitDetail.product.id,
+      sku_id: unitSku.id,
+      name: unitDetail.product.name,
+      sale_unit: unitSku.sale_unit,
+      barcode: unitCode,
+    }
+    const link = await addProductLink(db, boxDetail.product.id, {
+      linked_product_id: unitDetail.product.id,
+      relation: 'box_piece',
+      note: 'OCR 入库自动关联',
+    })
+    linkId = link.id
+    await addProductLink(db, unitDetail.product.id, {
+      linked_product_id: boxDetail.product.id,
+      relation: 'box_piece',
+      note: 'OCR 入库自动关联',
+    }).catch(() => {
+      // reverse link optional
+    })
+  }
+
+  return {
+    box: {
+      product_id: boxDetail.product.id,
+      sku_id: boxSku.id,
+      name: boxDetail.product.name,
+      sale_unit: boxSku.sale_unit,
+      barcode: boxCode,
+    },
+    unit: unitSide,
+    link_id: linkId,
+  }
 }
 
 export async function createPromotion(

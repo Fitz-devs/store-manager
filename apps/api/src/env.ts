@@ -16,6 +16,12 @@ export interface Bindings {
   APIZERO_KEY?: string
   BARCODESPIDER_TOKEN?: string
   OCR_MODEL?: string
+  OCR_MOCK?: string
+  /** 智谱 API Key（glm-ocr） */
+  ZHIPU_API_KEY?: string
+  ZHIPU_OCR_MODEL?: string
+  ZHIPU_BASE_URL?: string
+  ZHIPU_API_KEY_STORE?: { get: () => Promise<string> }
   ENVIRONMENT?: string
 }
 

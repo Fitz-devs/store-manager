@@ -240,6 +240,16 @@ export const ocrRequestSchema = z.object({
   image_key: z.string().min(1).max(300),
 })
 
+export const ocrFromRowSchema = z.object({
+  name: z.string().trim().min(1).max(100),
+  box_code: z.string().trim().min(8).max(64).nullable().optional(),
+  unit_code: z.string().trim().min(8).max(64).nullable().optional(),
+  conversion: z.coerce.number().int().positive().max(100000).default(1),
+  unit_price_fen: fen.nullable().optional(),
+  spec_hint: nullableText(80),
+  sale_unit: z.string().trim().min(1).max(10).default('箱'),
+})
+
 export const barcodeEnrichSchema = z.object({
   code: z.string().trim().min(1).max(64),
 })

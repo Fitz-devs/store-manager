@@ -7,9 +7,32 @@
   font-weight: 600;
 }
 
+.detail-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.detail-total-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #eef0f3;
+}
+
 .detail-total {
   font-size: 40px;
-  margin-top: 12px;
+  font-weight: 600;
+  margin-top: 0;
+}
+
+.item-jump {
+  font-size: 22px;
+  color: #2f6bff;
 }
 
 .item-row {

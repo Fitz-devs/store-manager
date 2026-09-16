@@ -129,6 +129,7 @@ export interface PurchaseItem {
   id: number
   purchase_id: number
   sku_id: number
+  product_id?: number | null
   product_name: string | null
   spec_name: string | null
   unit_name: string
@@ -149,6 +150,7 @@ export interface Purchase {
   total_amount: number
   note: string | null
   image_keys: string | null
+  ocr_raw?: string | null
   operator_id: number | null
   operator_name?: string | null
   ordered_at: string
@@ -313,6 +315,66 @@ export interface OcrRow {
   unit: string | null
   unit_price: number | null
   amount: number | null
+}
+
+export interface OcrHeader {
+  order_no: string | null
+  date: string | null
+  /** 供货商（单据抬头公司名），不是收货方 */
+  supplier_name: string | null
+  /** 供货商电话（抬头旁），不是客户电话 */
+  supplier_phone: string | null
+  /** 收货方（我们自己），仅作参考，不预填供应商 */
+  customer_name: string | null
+  customer_phone: string | null
+  salesman: string | null
+  driver: string | null
+  note: string | null
+  total_raw: string | null
+  total_fen: number | null
+  page_index: number
+  image_key: string
+}
+
+export interface OcrDraftRow {
+  seq: number | null
+  box_code: string | null
+  unit_code: string | null
+  name: string
+  name_cleaned: string
+  spec_hint: string | null
+  qty_raw: string
+  qty: number
+  unit: string
+  unit_price_raw: string
+  unit_price_fen: number | null
+  amount_raw: string
+  amount_fen: number | null
+  remark: string | null
+  conversion_guess: number
+  image_key: string
+  page_index: number
+}
+
+export interface OcrDraft {
+  headers: OcrHeader[]
+  rows: OcrDraftRow[]
+  model: string
+  raw: string
+}
+
+export interface OcrProductPair {
+  product_id: number
+  sku_id: number
+  name: string
+  sale_unit: string
+  barcode: string | null
+}
+
+export interface OcrFromRowResult {
+  box: OcrProductPair
+  unit: OcrProductPair | null
+  link_id: number | null
 }
 
 export interface HomeReport {

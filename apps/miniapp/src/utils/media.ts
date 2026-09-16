@@ -10,12 +10,21 @@ export interface LocalImage {
   file?: File
 }
 
-export async function pickImages(options: { count?: number; camera?: boolean } = {}): Promise<LocalImage[]> {
+export type PickSource = 'camera' | 'album' | 'both'
+
+export async function pickImages(
+  options: { count?: number; camera?: boolean; source?: PickSource } = {},
+): Promise<LocalImage[]> {
+  // camera: true 兼容旧行为 = both（可拍可选）；显式 source 优先
+  const source: PickSource =
+    options.source ?? (options.camera ? 'both' : 'album')
   if (IS_WEAPP) {
+    const sourceType: Array<'camera' | 'album'> =
+      source === 'camera' ? ['camera'] : source === 'album' ? ['album'] : ['camera', 'album']
     const media = await Taro.chooseMedia({
       count: options.count ?? 1,
       mediaType: ['image'],
-      sourceType: options.camera ? ['camera', 'album'] : ['album', 'camera'],
+      sourceType,
       sizeType: ['compressed'],
     })
     return media.tempFiles.map((item) => ({ path: item.tempFilePath }))
@@ -25,7 +34,8 @@ export async function pickImages(options: { count?: number; camera?: boolean } =
     input.type = 'file'
     input.accept = 'image/*'
     input.multiple = (options.count ?? 1) > 1
-    if (options.camera) input.setAttribute('capture', 'environment')
+    // 仅「只拍照」时强制相机；both/album 必须可选系统相册
+    if (source === 'camera') input.setAttribute('capture', 'environment')
     input.onchange = () => {
       const files = Array.from(input.files ?? [])
       if (!files.length) {

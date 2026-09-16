@@ -31,5 +31,17 @@ run_worker_first = true
 [ai]
 binding = "AI"
 
+# 硅基流动：账号级 Secrets Store（secret_name=siliconflow-key）绑定到 Worker。
+# 需在 dashboard 复制 store_id 后取消注释并 deploy。
+# 也可用常规 secret 兜底：bunx wrangler secret put SILICONFLOW_KEY
+# [[secrets_store_secrets]]
+# binding = "SILICONFLOW_KEY_STORE"
+# store_id = "<SECRETS_STORE_ID>"
+# secret_name = "siliconflow-key"
+
+# 智谱 glm-ocr（推荐中文表格，约 0.2 元/M tokens）：
+# bunx wrangler secret put ZHIPU_API_KEY
+# 可选：bunx wrangler secret put ZHIPU_OCR_MODEL  # 默认 glm-ocr
+
 [triggers]
 crons = ["0 18 * * *"]

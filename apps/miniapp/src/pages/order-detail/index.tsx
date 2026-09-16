@@ -70,7 +70,7 @@ export default function OrderDetailPage() {
   const deliver = async () => {
     if (!order) return
     try {
-      const images = await pickImages({ count: 1, camera: true })
+      const images = await pickImages({ count: 1, source: 'both' })
       const image = images[0]
       if (!image) return
       Taro.showLoading({ title: '生成水印' })

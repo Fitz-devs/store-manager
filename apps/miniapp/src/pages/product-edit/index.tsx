@@ -65,6 +65,36 @@ function markDirty() {
   Taro.setStorageSync('sm_products_dirty', 1)
 }
 
+type ProductPrefill = {
+  from?: string
+  rowIndex?: number
+  name?: string
+  box_code?: string
+  unit_code?: string
+  purchase_price?: string
+  sale_unit?: string
+  spec?: string
+  conversion?: string
+  qty?: string
+  amount?: string
+  prev_latest_purchase_price?: number | null
+  prev_retail_price?: number | null
+}
+
+/** 防 URL/草稿残留乱码：若像 percent-encoding 则解码 */
+function safeText(value: string | undefined | null): string {
+  const v = (value ?? '').trim()
+  if (!v) return ''
+  if (/%[0-9A-Fa-f]{2}/.test(v)) {
+    try {
+      return decodeURIComponent(v)
+    } catch {
+      return v
+    }
+  }
+  return v
+}
+
 export default function ProductEdit() {
   useAuthGuard()
   const router = useRouter()
@@ -85,6 +115,18 @@ export default function ProductEdit() {
   const [multiSpec, setMultiSpec] = useState(false)
   const [specName, setSpecName] = useState('')
   const [saleUnit, setSaleUnit] = useState('件')
+  /** OCR 预填的箱→件换算；用于 latest_purchase_price 存件均价 */
+  const [createConversion, setCreateConversion] = useState(1)
+  /** 入库预填带来的库内旧价（分），用于对比展示 */
+  const [prevPurchaseFen, setPrevPurchaseFen] = useState<number | null>(null)
+  /** 本次进货单价（元），编辑已有商品时用于对比 */
+  const [incomingPurchasePrice, setIncomingPurchasePrice] = useState('')
+  /** 本次识别带来的其他字段，编辑时展示在对应输入旁 */
+  const [incomingName, setIncomingName] = useState('')
+  const [incomingCodes, setIncomingCodes] = useState<string[]>([])
+  const [incomingSpec, setIncomingSpec] = useState('')
+  const [incomingUnit, setIncomingUnit] = useState('')
+  void prevPurchaseFen
   const [retailPrice, setRetailPrice] = useState('')
   const [friendPrice, setFriendPrice] = useState('')
   const [createPromos, setCreatePromos] = useState<PromoDraft[]>([])
@@ -230,11 +272,70 @@ export default function ProductEdit() {
   }
 
   const load = async (preferSkuId?: number) => {
+    // 从入库「去编辑/去创建」进入时，两边都要读本次进货对照
+    let purchasePrefill: ProductPrefill | null = null
+    try {
+      const raw = Taro.getStorageSync('sm_product_prefill') as ProductPrefill | '' | undefined
+      if (raw && typeof raw === 'object' && raw.from === 'purchase') {
+        purchasePrefill = raw
+        Taro.removeStorageSync('sm_product_prefill')
+      }
+    } catch {
+      // ignore
+    }
+    if (purchasePrefill?.purchase_price) {
+      setIncomingPurchasePrice(safeText(purchasePrefill.purchase_price))
+    }
+    if (purchasePrefill?.name) setIncomingName(safeText(purchasePrefill.name))
+    const incCodes = [purchasePrefill?.box_code, purchasePrefill?.unit_code]
+      .map((c) => safeText(c))
+      .filter(Boolean)
+    if (incCodes.length) setIncomingCodes(incCodes)
+    if (purchasePrefill?.spec) setIncomingSpec(safeText(purchasePrefill.spec))
+    if (purchasePrefill?.sale_unit) setIncomingUnit(safeText(purchasePrefill.sale_unit))
+    if (purchasePrefill?.prev_latest_purchase_price != null) {
+      setPrevPurchaseFen(Number(purchasePrefill.prev_latest_purchase_price))
+    }
+
     if (!editId) {
+      // 入库 OCR → 创建商品：预填走 storage，避免 URL 编码乱码
+      const prefill = purchasePrefill
       const prefilledBarcode = router.params.barcode
-      const prefilledName = router.params.name
+      const fromPurchase = router.params.from === 'purchase' || prefill?.from === 'purchase'
+      const prefilledName = safeText(prefill?.name || router.params.name)
+      const prefilledPrice = safeText(prefill?.purchase_price || router.params.purchase_price)
+      const prefilledUnit = safeText(prefill?.sale_unit || router.params.sale_unit) || '件'
+      const prefilledSpec = safeText(prefill?.spec || router.params.spec)
+      const prefilledBox = safeText(prefill?.box_code || router.params.box_code)
+      const prefilledUnitCode = safeText(prefill?.unit_code || router.params.unit_code)
+
+      if (fromPurchase) {
+        setStep(1)
+        setShowOptional(true)
+        // 丢弃旧草稿，避免上次 URL 乱码写回销售单位
+        try {
+          Taro.removeStorageSync(DRAFT_KEY)
+        } catch {
+          // ignore
+        }
+        setDraftNotice(false)
+      }
+      if (prefilledPrice) setPurchasePrice(prefilledPrice)
+      if (prefilledUnit) setSaleUnit(prefilledUnit)
+      if (prefilledSpec) setSpecName(prefilledSpec)
+      if (prefill?.conversion) {
+        const conv = Number(prefill.conversion)
+        if (Number.isFinite(conv) && conv > 1) setCreateConversion(conv)
+      }
+      if (prefill?.prev_latest_purchase_price != null) {
+        setPrevPurchaseFen(Number(prefill.prev_latest_purchase_price))
+      }
+      if (prefilledBox || prefilledUnitCode) {
+        const seed = [prefilledBox, prefilledUnitCode].filter(Boolean) as string[]
+        setCodes(seed)
+      }
       if (prefilledBarcode) {
-        setCodes([prefilledBarcode])
+        setCodes((prev) => (prev.length ? prev : [prefilledBarcode]))
         try {
           const lookup = await api.get<{
             cache?: {
@@ -244,22 +345,30 @@ export default function ProductEdit() {
               image_key?: string | null
             }
           }>(`/api/barcodes/lookup?code=${encodeURIComponent(prefilledBarcode)}`)
-          if (lookup.cache?.name) setName(lookup.cache.name)
+          if (lookup.cache?.name && !prefilledName) setName(lookup.cache.name)
           if (lookup.cache?.brand) setBrand(lookup.cache.brand)
           const cacheImage = lookup.cache?.image_key || lookup.cache?.image_url
           if (cacheImage) setImageKey(cacheImage)
         } catch {
           // 条码补全失败时保持手动录入
         }
-        return
       }
       if (prefilledName) setName(prefilledName)
+      if (fromPurchase) {
+        // 入库预填路径：不恢复旧草稿，预填已足够
+        draftRestoredRef.current = true
+        return
+      }
       if (!draftRestoredRef.current) {
         draftRestoredRef.current = true
         try {
           const draft = Taro.getStorageSync(DRAFT_KEY) as ProductDraft | '' | undefined
           if (draft && (draft.name || draft.codes?.length || draft.retailPrice)) {
-            applyDraft({ ...draft, name: prefilledName || draft.name })
+            applyDraft({
+              ...draft,
+              name: prefilledName || draft.name,
+              saleUnit: safeText(draft.saleUnit) || draft.saleUnit || '件',
+            })
           }
         } catch {
           // 无草稿时正常录入
@@ -285,6 +394,13 @@ export default function ProductEdit() {
       setSelRetail(fenToYuan(first.retail_price))
       setSelPurchase(first.latest_purchase_price === null ? '' : fenToYuan(first.latest_purchase_price))
       setSelFriend(first.friend_price === null ? '' : fenToYuan(first.friend_price))
+      // 库内进货价以当前 SKU 为准；识别字段只存 incoming，不自动覆盖
+      if (first.latest_purchase_price !== null) {
+        setPrevPurchaseFen(first.latest_purchase_price)
+      }
+      if (purchasePrefill?.from === 'purchase' || router.params.from === 'purchase') {
+        setStep(1)
+      }
     }
     const codeSet = new Set<string>()
     for (const sku of data.skus) {
@@ -566,10 +682,18 @@ export default function ProductEdit() {
       const retailFen = yuanToFen(retailPrice)
       const friendFen = friendPrice.trim() ? yuanToFen(friendPrice) : null
       const purchaseFen = purchasePrice.trim() ? yuanToFen(purchasePrice) : null
+      // 销售单位是箱/提且有换算时，latest_purchase_price 存「件均价」，与入库 normalize 一致
+      const conv = createConversion > 1 ? createConversion : 1
+      const basePurchaseFen =
+        purchaseFen === null
+          ? null
+          : conv > 1
+            ? Math.round(purchaseFen / conv)
+            : purchaseFen
       const lowIssues = findLowPriceIssues({
         retail: retailFen,
         friend: friendFen,
-        purchase: purchaseFen,
+        purchase: basePurchaseFen,
       })
       if (!(await guardManualLowPrice(lowIssues))) return
       setBusy(true)
@@ -587,14 +711,14 @@ export default function ProductEdit() {
             sale_unit: saleUnit.trim() || '件',
             retail_price: yuanToFen(retailPrice),
             friend_price: friendPrice.trim() ? yuanToFen(friendPrice) : null,
-            latest_purchase_price: purchasePrice.trim() ? yuanToFen(purchasePrice) : null,
+            latest_purchase_price: basePurchaseFen,
           },
           barcodes: codes
             .filter((code) => code.trim())
-            .slice(0, 1)
-            .map((code) => ({
+            .slice(0, 2)
+            .map((code, index) => ({
               code: code.trim(),
-              is_primary: true,
+              is_primary: index === 0,
             })),
         })
         try {
@@ -604,6 +728,36 @@ export default function ProductEdit() {
         }
         markDirty()
         Taro.showToast({ title: '商品已创建', icon: 'success' })
+        const sku = created.skus?.[0]
+        if (router.params.from === 'purchase') {
+          try {
+            const prev = Taro.getStorageSync('sm_purchase_bind_row') as
+              | { rowIndex?: number; pending?: boolean }
+              | ''
+              | undefined
+            const rowIndex =
+              typeof prev === 'object' && prev && typeof prev.rowIndex === 'number'
+                ? prev.rowIndex
+                : Number(router.params.rowIndex ?? '-1')
+            Taro.setStorageSync('sm_purchase_bind_row', {
+              rowIndex,
+              pending: true,
+              sku_id: sku?.id ?? null,
+              productName: created.product.name,
+              unitName: sku?.sale_unit || '件',
+              retail_price: sku?.retail_price ?? null,
+              friend_price: sku?.friend_price ?? null,
+            })
+          } catch {
+            // ignore
+          }
+          setTimeout(() => {
+            Taro.navigateBack().catch(() => {
+              Taro.redirectTo({ url: '/pages/purchase-new/index' })
+            })
+          }, 300)
+          return
+        }
         setTimeout(() => {
           Taro.redirectTo({ url: `/pages/product-edit/index?id=${created.product.id}` })
         }, 400)
@@ -734,6 +888,21 @@ export default function ProductEdit() {
                       保存
                     </Text>
                   </View>
+                  {(() => {
+                    if (!editId || !incomingCodes.length) return null
+                    const joined = incomingCodes.join(' / ')
+                    if (joined === codeDraft || joined === editCode) return null
+                    return (
+                      <Text
+                        className="field-warn"
+                        onClick={() => {
+                          setCodeDraft(joined)
+                        }}
+                      >
+                        本次识别码 {joined} · 点此采用
+                      </Text>
+                    )
+                  })()}
                 </>
               ) : (
                 <>
@@ -757,6 +926,15 @@ export default function ProductEdit() {
                 商品名称 <Text className="required-star">*</Text>
               </Text>
               <Input className="input" placeholder={PH.productName} value={name} onInput={(event) => setName(event.detail.value)} />
+              {(() => {
+                if (!editId || !incomingName) return null
+                if (incomingName === name) return null
+                return (
+                  <Text className="field-warn" onClick={() => setName(incomingName)}>
+                    本次识别「{incomingName}」 · 点此采用
+                  </Text>
+                )
+              })()}
               {nameError ? <Text className="field-error">{nameError}</Text> : null}
             </View>
             <View className="field">
@@ -904,6 +1082,15 @@ export default function ProductEdit() {
                       value={selSpec}
                       onInput={(event) => setSelSpec(event.detail.value)}
                     />
+                    {(() => {
+                      if (!editId || !incomingSpec) return null
+                      if (incomingSpec === selSpec) return null
+                      return (
+                        <Text className="field-warn" onClick={() => setSelSpec(incomingSpec)}>
+                          本次识别「{incomingSpec}」 · 点此采用
+                        </Text>
+                      )
+                    })()}
                   </View>
                 )}
                 <View className="field-row">
@@ -917,6 +1104,21 @@ export default function ProductEdit() {
                   <View className="field half">
                     <Text className="field-label">进货价（元）</Text>
                     <Input className="input" type="digit" value={selPurchase} onInput={(event) => setSelPurchase(event.detail.value)} />
+                    {(() => {
+                      // 仅当本次进货价与当前编辑框不同才提示；42 与 42.00 视为相同
+                      if (!incomingPurchasePrice || !editId) return null
+                      const incomingFen = yuanToFen(incomingPurchasePrice)
+                      const currentFen = selPurchase.trim() ? yuanToFen(selPurchase) : null
+                      if (currentFen === incomingFen) return null
+                      return (
+                        <Text
+                          className="field-warn"
+                          onClick={() => setSelPurchase(fenToYuan(incomingFen))}
+                        >
+                          本次进货 ¥{incomingPurchasePrice} · 点此采用
+                        </Text>
+                      )
+                    })()}
                   </View>
                 </View>
                 <View className="field-row">
@@ -929,6 +1131,15 @@ export default function ProductEdit() {
                     <View className="field half">
                       <Text className="field-label">销售单位</Text>
                       <Input className="input" placeholder={PH.saleUnit} value={selUnit} onInput={(event) => setSelUnit(event.detail.value)} />
+                      {(() => {
+                        if (!editId || !incomingUnit) return null
+                        if (incomingUnit === selUnit) return null
+                        return (
+                          <Text className="field-warn" onClick={() => setSelUnit(incomingUnit)}>
+                            本次识别「{incomingUnit}」 · 点此采用
+                          </Text>
+                        )
+                      })()}
                     </View>
                   )}
                 </View>

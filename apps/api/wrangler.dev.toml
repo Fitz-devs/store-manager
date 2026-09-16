@@ -6,6 +6,9 @@ workers_dev = true
 
 [vars]
 ENVIRONMENT = "development"
+OCR_MOCK = "1"
+JWT_SECRET = "dev-only-jwt-secret-not-for-prod"
+# 本地测硅基流动：OCR_MOCK 改为 "0"，并在 .dev.vars 写入 SILICONFLOW_KEY=sk-...
 
 [[d1_databases]]
 binding = "DB"

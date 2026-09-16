@@ -136,3 +136,119 @@
 .footer-value {
   font-size: 34px;
 }
+
+.ocr-image-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.ocr-progress {
+  margin-top: 12px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: #f0f7ff;
+  font-size: 22px;
+}
+
+.ocr-step-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.ocr-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #8a8f99;
+  font-size: 24px;
+}
+
+.ocr-step.active {
+  color: #1a9e55;
+  font-weight: 600;
+}
+
+.ocr-step-num {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #e8ebf0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+}
+
+.ocr-step.active .ocr-step-num {
+  background: #1a9e55;
+  color: #fff;
+}
+
+.ocr-step-line {
+  flex: 1;
+  height: 1px;
+  background: #e5e7eb;
+}
+
+.step-hint {
+  display: block;
+  margin-bottom: 12px;
+  font-size: 22px;
+}
+
+.ocr-thumb {
+  width: 72px;
+  height: 72px;
+  border-radius: 10px;
+  background: #f0f2f5;
+  border: 1px solid #e5e7eb;
+}
+
+.ocr-image-count {
+  font-size: 22px;
+}
+
+.ocr-page-tag {
+  font-size: 22px;
+  margin-left: 8px;
+}
+
+.ocr-codes {
+  display: flex;
+  gap: 16px;
+  font-size: 22px;
+}
+
+.field.quarter {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field.quarter .field-label {
+  font-size: 20px;
+  color: #8a8f99;
+}
+
+.field-hint {
+  font-size: 20px;
+  margin-top: 4px;
+}
+
+.input-warn {
+  border: 1px solid #f59e0b !important;
+  background: #fffbeb;
+}
+
+.warn-text {
+  color: #b45309;
+  font-size: 20px;
+  margin-top: 4px;
+}

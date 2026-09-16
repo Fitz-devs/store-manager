@@ -64,20 +64,33 @@ export default function PurchaseDetail() {
             {PURCHASE_KIND_LABELS[purchase.kind]}
           </Text>
         </View>
-        <Text className="muted">
-          {purchase.supplier_name || '未填供应商'} · 入库日期 {purchase.ordered_at.slice(0, 10)}
-        </Text>
-        <Text className="muted">
-          经办：{purchase.operator_name || '-'} · 录入：{formatDateTime(purchase.created_at)}
-        </Text>
-        {purchase.note ? <Text className="muted">备注：{purchase.note}</Text> : null}
-        <Text className="price-text detail-total">{formatFen(purchase.total_amount)}</Text>
+        <View className="detail-meta">
+          <Text className="muted">
+            {purchase.supplier_name || '未填供应商'} · 入库日期 {purchase.ordered_at.slice(0, 10)}
+          </Text>
+          <Text className="muted">
+            经办：{purchase.operator_name || '-'} · 录入：{formatDateTime(purchase.created_at)}
+          </Text>
+          {purchase.note ? <Text className="muted">备注：{purchase.note}</Text> : null}
+        </View>
+        <View className="detail-total-row">
+          <Text className="muted">合计</Text>
+          <Text className="price-text detail-total">{formatFen(purchase.total_amount)}</Text>
+        </View>
       </View>
 
       <View className="section-title">商品明细</View>
       <View className="card">
         {purchase.items.map((item) => (
-          <View key={item.id} className="item-row">
+          <View
+            key={item.id}
+            className="item-row"
+            onClick={() => {
+              if (item.product_id) {
+                Taro.navigateTo({ url: `/pages/product-detail/index?id=${item.product_id}` })
+              }
+            }}
+          >
             <View className="item-main">
               <Text>
                 {item.product_name}
@@ -88,11 +101,10 @@ export default function PurchaseDetail() {
                 {item.unit_name} × {formatFen(item.unit_price)}
                 {item.conversion > 1 ? `（1${item.unit_name}=${item.conversion}件）` : ''}
               </Text>
+              {item.product_id ? <Text className="muted item-jump">查看商品 ›</Text> : null}
             </View>
             <View className="item-amount">
               <Text className="price-text">{formatFen(item.amount)}</Text>
-              {item.price_changed ? <Text className="tag tag-warn">入库价变动</Text> : null}
-              {item.retail_updated ? <Text className="tag tag-success">已更新售价</Text> : null}
             </View>
           </View>
         ))}

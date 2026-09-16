@@ -4,6 +4,7 @@ import {
   barcodeInputSchema,
   linkCreateSchema,
   listQuerySchema,
+  ocrFromRowSchema,
   productCreateSchema,
   productUpdateSchema,
   skuInputSchema,
@@ -15,6 +16,7 @@ import {
   addProductLink,
   addSku,
   createProduct,
+  createProductsFromOcrRow,
   deleteProductLink,
   getProductDetail,
   listProducts,
@@ -52,6 +54,13 @@ router.post('/', async (c) => {
   const { db, d1 } = c.get('database')
   const detail = await createProduct(db, d1, input, c.get('user').id)
   return ok(c, detail, 201)
+})
+
+router.post('/from-ocr-row', async (c) => {
+  const input = await parseBody(c, ocrFromRowSchema)
+  const { db, d1 } = c.get('database')
+  const result = await createProductsFromOcrRow(db, d1, input, c.get('user').id)
+  return ok(c, result, 201)
 })
 
 router.get('/:id', async (c) => {

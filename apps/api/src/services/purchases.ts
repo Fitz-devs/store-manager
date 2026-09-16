@@ -97,12 +97,7 @@ export async function createPurchase(
     if (!sku) throw new ApiError(400, 'SKU_NOT_FOUND', `商品不存在: ${item.sku_id}`)
     const baseQty = item.qty * item.conversion
     const amount = calcAmount(item.unit_price, item.qty)
-    const newBasePrice = normalizeUnitPrice(item.unit_price, item.conversion)
-    const priceChanged =
-      options.applyPurchasePrice &&
-      sku.latest_purchase_price !== null &&
-      sku.latest_purchase_price !== newBasePrice
-    return { item, sku, baseQty, amount, newBasePrice, priceChanged }
+    return { item, sku, baseQty, amount }
   })
 
   const totalAmount = computedItems.reduce((sum, row) => sum + row.amount, 0)
@@ -124,48 +119,7 @@ export async function createPurchase(
     .returningAll()
     .executeTakeFirstOrThrow()
 
-  const retailUpdatedSkus = new Set<number>()
-  const priceStatements = []
-  if (options.applyPurchasePrice) {
-    const updates = input.price_updates ?? []
-    for (const update of updates) {
-      const sku = meta.get(update.sku_id)
-      if (!sku) continue
-      const values: Record<string, unknown> = { updated_at: now }
-      const entries: Array<{ type: string; oldValue: number | null; newValue: number | null }> = []
-      if (update.retail_price !== undefined && update.retail_price !== sku.retail_price) {
-        values.retail_price = update.retail_price
-        entries.push({ type: 'retail', oldValue: sku.retail_price, newValue: update.retail_price })
-      }
-      if (update.friend_price !== undefined && update.friend_price !== sku.friend_price) {
-        values.friend_price = update.friend_price
-        entries.push({ type: 'friend', oldValue: sku.friend_price, newValue: update.friend_price })
-      }
-      if (!entries.length) continue
-      retailUpdatedSkus.add(update.sku_id)
-      priceStatements.push(
-        db.updateTable('skus').set(values as never).where('id', '=', update.sku_id).compile(),
-      )
-      for (const entry of entries) {
-        priceStatements.push(
-          db
-            .insertInto('price_history')
-            .values({
-              sku_id: update.sku_id,
-              price_type: entry.type,
-              old_value: entry.oldValue,
-              new_value: entry.newValue ?? 0,
-              source: 'purchase',
-              reason: `入库单 ${purchaseNo} 同步`,
-              operator_id: options.operatorId,
-              created_at: now,
-            })
-            .compile(),
-        )
-      }
-    }
-  }
-
+  // 价格在「完善商品」阶段已定，入库只记流水，不再改 SKU / 价格历史
   const statements = computedItems.map((row) =>
     db
       .insertInto('purchase_items')
@@ -180,42 +134,13 @@ export async function createPurchase(
         base_qty: row.baseQty,
         unit_price: row.item.unit_price,
         amount: row.amount,
-        price_changed: row.priceChanged ? 1 : 0,
-        retail_updated: retailUpdatedSkus.has(row.sku.sku_id) ? 1 : 0,
+        price_changed: 0,
+        retail_updated: 0,
       })
       .compile(),
   )
 
-  if (options.applyPurchasePrice) {
-    for (const row of computedItems) {
-      statements.push(
-        db
-          .updateTable('skus')
-          .set({ latest_purchase_price: row.newBasePrice, updated_at: now })
-          .where('id', '=', row.sku.sku_id)
-          .compile(),
-      )
-      if (row.priceChanged) {
-        statements.push(
-          db
-            .insertInto('price_history')
-            .values({
-              sku_id: row.sku.sku_id,
-              price_type: 'purchase',
-              old_value: row.sku.latest_purchase_price,
-              new_value: row.newBasePrice,
-              source: 'purchase',
-              reason: `入库单 ${purchaseNo}`,
-              operator_id: options.operatorId,
-              created_at: now,
-            })
-            .compile(),
-        )
-      }
-    }
-  }
-
-  await batchCompiled(d1, [...statements, ...priceStatements])
+  await batchCompiled(d1, statements)
 
   const detail = await getPurchase(db, purchase.id)
   if (!detail) throw new ApiError(500, 'CREATE_FAILED', '入库单创建失败')
@@ -233,7 +158,9 @@ export async function getPurchase(db: Kysely<DB>, id: number): Promise<PurchaseW
   if (!row) return null
   const items = await db
     .selectFrom('purchase_items')
-    .selectAll()
+    .leftJoin('skus', 'skus.id', 'purchase_items.sku_id')
+    .selectAll('purchase_items')
+    .select('skus.product_id as product_id')
     .where('purchase_id', '=', id)
     .orderBy('id', 'asc')
     .execute()
@@ -245,6 +172,7 @@ export async function getPurchase(db: Kysely<DB>, id: number): Promise<PurchaseW
     total_amount: row.total_amount,
     note: row.note,
     image_keys: row.image_keys,
+    ocr_raw: row.ocr_raw,
     operator_id: row.operator_id,
     operator_name: row.operator_name,
     ordered_at: row.ordered_at,
@@ -257,6 +185,7 @@ function toPurchaseItem(row: {
   id: number
   purchase_id: number
   sku_id: number
+  product_id?: number | null
   product_name: string | null
   spec_name: string | null
   unit_name: string
@@ -268,7 +197,22 @@ function toPurchaseItem(row: {
   price_changed: number
   retail_updated: number
 }): PurchaseItem {
-  return { ...row }
+  return {
+    id: row.id,
+    purchase_id: row.purchase_id,
+    sku_id: row.sku_id,
+    product_id: row.product_id ?? null,
+    product_name: row.product_name,
+    spec_name: row.spec_name,
+    unit_name: row.unit_name,
+    conversion: row.conversion,
+    qty: row.qty,
+    base_qty: row.base_qty,
+    unit_price: row.unit_price,
+    amount: row.amount,
+    price_changed: row.price_changed,
+    retail_updated: row.retail_updated,
+  }
 }
 
 export interface ListPurchasesParams {
