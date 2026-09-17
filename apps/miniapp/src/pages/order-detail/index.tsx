@@ -3,6 +3,7 @@ import Taro, { useDidShow, useRouter } from '@tarojs/taro'
 import { Button, Canvas, Image, Input, Text, View } from '@tarojs/components'
 import type { OrderWithItems, ProductDetail, ProductListItem, User } from '@sm/shared'
 import { api, fileUrl, getUser } from '../../api/client'
+import { PH } from '../../config/placeholders'
 import { useAuthGuard } from '../../utils/auth'
 import { pickImages, uploadLocalImage } from '../../utils/media'
 import {
@@ -17,7 +18,7 @@ import {
 import { watermarkPhoto } from '../../utils/watermark'
 import './index.scss'
 
-type PayMethod = 'cash' | 'wechat' | 'alipay' | 'goods'
+type PayMethod = 'cash' | 'wechat' | 'alipay' | 'goods' | 'other'
 
 interface GoodsItem {
   sku_id: number
@@ -39,6 +40,7 @@ export default function OrderDetailPage() {
   const [method, setMethod] = useState<PayMethod>('wechat')
   const [amount, setAmount] = useState('')
   const [note, setNote] = useState('')
+  const [otherReason, setOtherReason] = useState('')
   const [goodsItems, setGoodsItems] = useState<GoodsItem[]>([])
   const [keyword, setKeyword] = useState('')
   const [results, setResults] = useState<ProductListItem[]>([])
@@ -156,7 +158,7 @@ export default function OrderDetailPage() {
   const submitPayment = async () => {
     const amountFen = method === 'goods' ? goodsTotal : yuanToFen(amount)
     if (amountFen <= 0) {
-      Taro.showToast({ title: '请输入回款金额', icon: 'none' })
+      Taro.showToast({ title: method === 'other' ? '请输入抵扣金额' : '请输入回款金额', icon: 'none' })
       return
     }
     if (method === 'goods' && !goodsItems.length) {
@@ -169,7 +171,7 @@ export default function OrderDetailPage() {
         order_id: id,
         method,
         amount: amountFen,
-        note: note.trim() || null,
+        note: (method === 'other' ? otherReason : note).trim() || null,
         goods_items:
           method === 'goods'
             ? goodsItems.map((item) => ({
@@ -185,6 +187,7 @@ export default function OrderDetailPage() {
       setShowPay(false)
       setGoodsItems([])
       setNote('')
+      setOtherReason('')
       load()
     } catch (error) {
       Taro.showToast({ title: (error as Error).message, icon: 'none' })
@@ -224,7 +227,7 @@ export default function OrderDetailPage() {
     )
   }
 
-  const methods: PayMethod[] = ['wechat', 'alipay', 'cash', 'goods']
+  const methods: PayMethod[] = ['wechat', 'alipay', 'cash', 'goods', 'other']
 
   return (
     <View className="order-detail-page">
@@ -332,7 +335,24 @@ export default function OrderDetailPage() {
             ))}
           </View>
 
-          {method === 'goods' ? (
+          {method === 'other' ? (
+            <View>
+              <View className="field">
+                <Text className="field-label">抵扣原因</Text>
+                <Input
+                  className="input"
+                  placeholder={PH.otherReason}
+                  value={otherReason}
+                  onInput={(event) => setOtherReason(event.detail.value)}
+                />
+              </View>
+              <View className="field">
+                <Text className="field-label">抵扣金额（元）</Text>
+                <Input className="input" type="digit" value={amount} onInput={(event) => setAmount(event.detail.value)} />
+                <Text className="muted">按抵扣金额计入已收款，原因记录到回款备注</Text>
+              </View>
+            </View>
+          ) : method === 'goods' ? (
             <View>
               <View className="search-row">
                 <Input
@@ -378,10 +398,12 @@ export default function OrderDetailPage() {
             </View>
           )}
 
-          <View className="field">
-            <Text className="field-label">备注</Text>
-            <Input className="input" placeholder="如 部分现金" value={note} onInput={(event) => setNote(event.detail.value)} />
-          </View>
+          {method !== 'other' && (
+            <View className="field">
+              <Text className="field-label">备注</Text>
+              <Input className="input" placeholder="如 部分现金" value={note} onInput={(event) => setNote(event.detail.value)} />
+            </View>
+          )}
           <View className="inline-actions">
             <Button className="btn btn-ghost" onClick={() => setShowPay(false)}>
               取消

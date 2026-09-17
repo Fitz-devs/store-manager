@@ -14,6 +14,7 @@ interface Query {
   q: string
   stockOnly: boolean
   category: string
+  archived: boolean
 }
 
 export default function ProductList() {
@@ -21,7 +22,7 @@ export default function ProductList() {
   const router = useRouter()
   const initialQ = decodeURIComponent(router.params.q || '')
   const initialStock = router.params.stock === '1'
-  const [query, setQuery] = useState<Query>({ q: initialQ, stockOnly: initialStock, category: '' })
+  const [query, setQuery] = useState<Query>({ q: initialQ, stockOnly: initialStock, category: '', archived: false })
   const [categories, setCategories] = useState<string[]>([])
   const [items, setItems] = useState<ProductListItem[]>([])
   const [total, setTotal] = useState(0)
@@ -47,6 +48,7 @@ export default function ProductList() {
       if (params.q.trim()) search.set('q', params.q.trim())
       if (params.stockOnly) search.set('stock', 'out_of_stock')
       if (params.category) search.set('category', params.category)
+      if (params.archived) search.set('status', 'archived')
       search.set('page', String(nextPage))
       search.set('page_size', '20')
       const data = await api.get<{ items: ProductListItem[]; total: number }>(
@@ -146,8 +148,8 @@ export default function ProductList() {
 
         <View className="filter-scroll">
           <View
-            className={`sm-chip ${!query.stockOnly && !query.category ? 'sm-chip-active' : ''}`}
-            onClick={() => load(1, false, updateQuery({ stockOnly: false, category: '' })).catch(() => undefined)}
+            className={`sm-chip ${!query.stockOnly && !query.category && !query.archived ? 'sm-chip-active' : ''}`}
+            onClick={() => load(1, false, updateQuery({ stockOnly: false, category: '', archived: false })).catch(() => undefined)}
           >
             全部
           </View>
@@ -156,6 +158,12 @@ export default function ProductList() {
             onClick={() => load(1, false, updateQuery({ stockOnly: !queryRef.current.stockOnly })).catch(() => undefined)}
           >
             只看缺货
+          </View>
+          <View
+            className={`sm-chip ${query.archived ? 'sm-chip-active' : ''}`}
+            onClick={() => load(1, false, updateQuery({ archived: !queryRef.current.archived })).catch(() => undefined)}
+          >
+            已下架
           </View>
           {categories.map((name) => (
             <View
@@ -190,7 +198,8 @@ export default function ProductList() {
           <View className="product-info">
             <View className="row-between">
               <Text className="product-name">{product.name}</Text>
-              {product.out_of_stock && <Text className="tag tag-danger">缺货</Text>}
+              {product.out_of_stock && !query.archived && <Text className="tag tag-danger">缺货</Text>}
+              {query.archived && <Text className="tag tag-warn">已下架</Text>}
             </View>
             <Text className="muted product-meta">
               {[product.category, product.brand].filter(Boolean).join(' · ') || '未分类'}
@@ -202,15 +211,17 @@ export default function ProductList() {
                   ? formatFen(product.min_retail_price)
                   : `${formatFen(product.min_retail_price)} ~ ${formatFen(product.max_retail_price)}`}
               </Text>
-              <Button
-                className="btn btn-primary quick-add-btn"
-                onClick={(event) => {
-                  event.stopPropagation()
-                  quickAdd(product.id)
-                }}
-              >
-                ＋开单
-              </Button>
+              {!query.archived && (
+                <Button
+                  className="btn btn-primary quick-add-btn"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    quickAdd(product.id)
+                  }}
+                >
+                  ＋开单
+                </Button>
+              )}
             </View>
           </View>
         </View>

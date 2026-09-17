@@ -10,13 +10,14 @@ import type {
   SkuWithBarcodes,
 } from '@sm/shared'
 import { api, fileUrl, getUser } from '../../api/client'
+import { PH } from '../../config/placeholders'
 import { DateTimeField } from '../../components/datetime-field'
 import { Stepper } from '../../components/stepper'
 import { useAuthGuard } from '../../utils/auth'
 import { TAB_PAGE_FOOTER_STYLE } from '../../utils/env'
 import { scanBarcode } from '../../utils/scan'
 import { setPendingOrdersFilter } from '../../utils/orderFilter'
-import { fenToYuan, formatFen, orderRemaining, orderStatusTagClass, orderStatusText, todayString, yuanToFen } from '../../utils/format'
+import { fenToYuan, formatFen, todayString, yuanToFen } from '../../utils/format'
 import './index.scss'
 
 interface CartItem {
@@ -27,7 +28,6 @@ interface CartItem {
   conversion: number
   qty: number
   price: number
-  isPrize: boolean
 }
 
 interface GoodsItem {
@@ -39,13 +39,14 @@ interface GoodsItem {
   unit_price: string
 }
 
-type PayMethod = 'cash' | 'wechat' | 'alipay' | 'goods'
+type PayMethod = 'cash' | 'wechat' | 'alipay' | 'goods' | 'other'
 
 const PAY_METHODS: Array<{ value: PayMethod; label: string }> = [
   { value: 'cash', label: '现金' },
   { value: 'wechat', label: '微信' },
   { value: 'alipay', label: '支付宝' },
   { value: 'goods', label: '换货' },
+  { value: 'other', label: '其他' },
 ]
 
 export default function OrderNew() {
@@ -76,6 +77,8 @@ export default function OrderNew() {
   const [payAmount, setPayAmount] = useState('')
   const [payAmountEdited, setPayAmountEdited] = useState(false)
   const [payNote, setPayNote] = useState('')
+  const [otherReason, setOtherReason] = useState('')
+  const [otherAmount, setOtherAmount] = useState('')
   const [goodsItems, setGoodsItems] = useState<GoodsItem[]>([])
   const [goodsKeyword, setGoodsKeyword] = useState('')
   const [goodsResults, setGoodsResults] = useState<ProductListItem[]>([])
@@ -168,10 +171,10 @@ export default function OrderNew() {
     searchTimer.current = setTimeout(() => doSearch(value), 350)
   }
 
-  const addSku = (sku: SkuWithBarcodes, productName: string, isPrize: boolean, price: number) => {
+  const addSku = (sku: SkuWithBarcodes, productName: string, price: number) => {
     setCart((previous) => {
       const index = previous.findIndex(
-        (item) => item.sku.id === sku.id && item.isPrize === isPrize && item.price === price,
+        (item) => item.sku.id === sku.id && item.price === price,
       )
       if (index >= 0) {
         const next = [...previous]
@@ -181,14 +184,13 @@ export default function OrderNew() {
       return [
         ...previous,
         {
-          lineId: `${sku.id}_${isPrize ? 1 : 0}_${Date.now()}`,
+          lineId: `${sku.id}_${Date.now()}`,
           sku,
           productName,
           unitName: sku.sale_unit,
           conversion: 1,
           qty: 1,
           price,
-          isPrize,
         },
       ]
     })
@@ -201,25 +203,7 @@ export default function OrderNew() {
       const confirm = await Taro.showModal({ title: '该商品已标记缺货', content: '仍要加入订单吗？' })
       if (!confirm.confirm) return
     }
-    if (!sku.prizes.length) {
-      addSku(sku, productName, false, sku.retail_price)
-      return
-    }
-    const sheet = await Taro.showActionSheet({
-      itemList: [
-        `正常销售 ${formatFen(sku.retail_price)}/${sku.sale_unit}`,
-        ...sku.prizes.map(
-          (prize) =>
-            `${prize.description || '奖品兑换'}（${prize.extra_price === 0 ? '免费换购' : `加 ¥${fenToYuan(prize.extra_price)} 换购`}）`,
-        ),
-      ],
-    })
-    if (sheet.tapIndex === 0) {
-      addSku(sku, productName, false, sku.retail_price)
-      return
-    }
-    const prize = sku.prizes[sheet.tapIndex - 1]
-    if (prize) addSku(sku, productName, true, prize.extra_price)
+    addSku(sku, productName, sku.retail_price)
   }
 
   const addProduct = async (productId: number) => {
@@ -438,9 +422,15 @@ export default function OrderNew() {
       Taro.showToast({ title: '请录入换货商品', icon: 'none' })
       return
     }
-    const finalAmount = paid ? (payMethod === 'goods' ? goodsTotal : yuanToFen(payAmount)) : 0
+    const finalAmount = paid
+      ? payMethod === 'goods'
+        ? goodsTotal
+        : payMethod === 'other'
+          ? yuanToFen(otherAmount)
+          : yuanToFen(payAmount)
+      : 0
     if (paid && finalAmount <= 0) {
-      Taro.showToast({ title: '请输入收款金额', icon: 'none' })
+      Taro.showToast({ title: payMethod === 'other' ? '请输入抵扣金额' : '请输入收款金额', icon: 'none' })
       return
     }
     if (paid && finalAmount > total) {
@@ -466,7 +456,7 @@ export default function OrderNew() {
           conversion: item.conversion,
           qty: item.qty,
           unit_price: item.price,
-          promotion_text: item.isPrize ? '奖品兑换' : null,
+          promotion_text: null,
         })),
         payment: paid
           ? payMethod === 'goods'
@@ -482,7 +472,9 @@ export default function OrderNew() {
                   unit_price: yuanToFen(item.unit_price),
                 })),
               }
-            : { method: payMethod, amount: finalAmount, note: payNote.trim() || null }
+            : payMethod === 'other'
+              ? { method: 'other', amount: finalAmount, note: otherReason.trim() || null }
+              : { method: payMethod, amount: finalAmount, note: payNote.trim() || null }
           : undefined,
       })
 
@@ -517,6 +509,8 @@ export default function OrderNew() {
       setGoodsItems([])
       setPayAmountEdited(false)
       setPayNote('')
+      setOtherReason('')
+      setOtherAmount('')
       setStep(1)
       loadReport()
       setTimeout(() => {
@@ -676,7 +670,6 @@ export default function OrderNew() {
                 </Text>
                 <Text className="muted">
                   {item.unitName}
-                  {item.isPrize ? ' · 奖品兑换' : ''}
                   {item.sku.stock_status === 'out_of_stock' ? ' · 缺货' : ''}
                 </Text>
               </View>
@@ -852,6 +845,28 @@ export default function OrderNew() {
                   <Text className="price-text">{formatFen(goodsTotal)}</Text>
                 </View>
               </View>
+            ) : payMethod === 'other' ? (
+              <View>
+                <View className="field">
+                  <Text className="field-label">抵扣原因</Text>
+                  <Input
+                    className="input"
+                    placeholder={PH.otherReason}
+                    value={otherReason}
+                    onInput={(event) => setOtherReason(event.detail.value)}
+                  />
+                </View>
+                <View className="field">
+                  <Text className="field-label">抵扣金额（元）</Text>
+                  <Input
+                    className="input"
+                    type="digit"
+                    value={otherAmount}
+                    onInput={(event) => setOtherAmount(event.detail.value)}
+                  />
+                  <Text className="muted">按抵扣金额计入已收款，余款可在订单详情继续回款</Text>
+                </View>
+              </View>
             ) : (
               <View className="field">
                 <Text className="field-label">本次收款金额（元）</Text>
@@ -869,15 +884,17 @@ export default function OrderNew() {
                 </Text>
               </View>
             )}
-            <View className="field">
-              <Text className="field-label">备注</Text>
-              <Input
-                className="input"
-                placeholder="如需记录请填写"
-                value={payNote}
-                onInput={(event) => setPayNote(event.detail.value)}
-              />
-            </View>
+            {payMethod !== 'other' && (
+              <View className="field">
+                <Text className="field-label">备注</Text>
+                <Input
+                  className="input"
+                  placeholder="如需记录请填写"
+                  value={payNote}
+                  onInput={(event) => setPayNote(event.detail.value)}
+                />
+              </View>
+            )}
           </View>
         )}
         {!paid && <Text className="muted">该单将计入客户欠款，回款可在订单详情中分次记录</Text>}

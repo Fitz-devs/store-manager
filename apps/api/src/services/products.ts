@@ -1,11 +1,10 @@
-import type { Kysely, Selectable } from 'kysely'
+import type { CompiledQuery, Kysely, Selectable } from 'kysely'
 import type {
   Barcode,
   LinkedProduct,
   OcrFromRowResult,
   Paginated,
   PriceHistoryEntry,
-  Prize,
   Product,
   ProductDetail,
   ProductLink,
@@ -28,6 +27,7 @@ export interface ListProductsParams {
   q?: string | undefined
   category?: string | undefined
   stock: 'all' | 'in_stock' | 'out_of_stock'
+  status: 'active' | 'archived' | 'all'
   page: number
   page_size: number
 }
@@ -56,10 +56,6 @@ export interface ProductCreateData {
     starts_at?: string | null | undefined
     ends_at?: string | null | undefined
   }>
-  prizes?: Array<{
-    description?: string | null | undefined
-    extra_price: number
-  }>
 }
 
 const toBarcode = (row: BarcodeRow): Barcode => ({
@@ -75,7 +71,6 @@ const toSku = (
   row: SkuRow,
   barcodes: Barcode[],
   promotions: Promotion[] = [],
-  prizes: Prize[] = [],
 ): SkuWithBarcodes => ({
   id: row.id,
   product_id: row.product_id,
@@ -91,7 +86,6 @@ const toSku = (
   updated_at: row.updated_at,
   barcodes: barcodes.filter((barcode) => barcode.sku_id === row.id),
   promotions: promotions.filter((promotion) => promotion.sku_id === row.id),
-  prizes: prizes.filter((prize) => prize.sku_id === row.id),
 })
 
 const parseAliases = (value: string | null): string[] => {
@@ -165,7 +159,12 @@ export async function listProducts(
   params: ListProductsParams,
 ): Promise<Paginated<ProductListItem>> {
   const base = () => {
-    let query = db.selectFrom('products').where('products.status', '=', 'active')
+    let query = db.selectFrom('products')
+    if (params.status === 'archived') {
+      query = query.where('products.status', '=', 'archived')
+    } else if (params.status !== 'all') {
+      query = query.where('products.status', '=', 'active')
+    }
     if (params.q) {
       const keyword = `%${params.q}%`
       query = query.where((eb) =>
@@ -300,16 +299,8 @@ export async function getProductDetail(db: Kysely<DB>, id: number): Promise<Prod
         .orderBy('id', 'asc')
         .execute()
     : []
-  const prizeRows = skuIds.length
-    ? await db
-        .selectFrom('prizes')
-        .selectAll()
-        .where('sku_id', 'in', skuIds)
-        .orderBy('id', 'asc')
-        .execute()
-    : []
   const skus = skuRows.map((row) =>
-    toSku(row, barcodeRows.map(toBarcode), promotionRows, prizeRows),
+    toSku(row, barcodeRows.map(toBarcode), promotionRows),
   )
   const linkedProducts = await getLinkedProducts(db, id)
 
@@ -583,16 +574,8 @@ export async function createProductsFromOcrRow(
         operatorId,
       )
     } catch (error) {
-      // 回滚已建箱装，避免半截数据
-      await db
-        .updateTable('products')
-        .set({ status: 'archived', updated_at: nowIso() })
-        .where('id', '=', boxDetail.product.id)
-        .execute()
-        .catch(() => undefined)
-      if (boxCode) {
-        await db.deleteFrom('barcodes').where('code', '=', boxCode).execute().catch(() => undefined)
-      }
+      // 回滚已建箱装，避免半截数据（无外键，purge 显式清理子数据）
+      await purgeProduct(db, d1, boxDetail.product.id).catch(() => undefined)
       throw error
     }
     const unitSku = unitDetail.skus[0]
@@ -672,51 +655,6 @@ export async function updatePromotion(
     .returningAll()
     .executeTakeFirst()
   if (!row) throw new ApiError(404, 'NOT_FOUND', '优惠不存在')
-  return row
-}
-
-export async function createPrize(
-  db: Kysely<DB>,
-  skuId: number,
-  input: { description?: string | null; extra_price: number },
-): Promise<Prize> {
-  const sku = await db.selectFrom('skus').select('id').where('id', '=', skuId).executeTakeFirst()
-  if (!sku) throw new ApiError(404, 'SKU_NOT_FOUND', '规格不存在')
-  if (input.extra_price < 0) throw new ApiError(400, 'VALIDATION', '换购价不能为负数')
-  return db
-    .insertInto('prizes')
-    .values({
-      sku_id: skuId,
-      description: input.description ?? null,
-      extra_price: input.extra_price,
-      created_at: nowIso(),
-    })
-    .returningAll()
-    .executeTakeFirstOrThrow()
-}
-
-export async function deletePrize(db: Kysely<DB>, id: number): Promise<void> {
-  await db.deleteFrom('prizes').where('id', '=', id).execute()
-}
-
-export async function updatePrize(
-  db: Kysely<DB>,
-  id: number,
-  input: { description?: string | null; extra_price?: number },
-): Promise<Prize> {
-  if (input.extra_price !== undefined && input.extra_price < 0) {
-    throw new ApiError(400, 'VALIDATION', '换购价不能为负数')
-  }
-  const values: Record<string, unknown> = {}
-  if (input.description !== undefined) values.description = input.description
-  if (input.extra_price !== undefined) values.extra_price = input.extra_price
-  const row = await db
-    .updateTable('prizes')
-    .set(values)
-    .where('id', '=', id)
-    .returningAll()
-    .executeTakeFirst()
-  if (!row) throw new ApiError(404, 'NOT_FOUND', '奖品不存在')
   return row
 }
 
@@ -829,23 +767,15 @@ export async function createProduct(
           .compile(),
       )
     }
-    for (const prize of input.prizes ?? []) {
-      statements.push(
-        db
-          .insertInto('prizes')
-          .values({
-            sku_id: sku.id,
-            description: prize.description ?? null,
-            extra_price: prize.extra_price,
-            created_at: now,
-          })
-          .compile(),
-      )
-    }
 
     await batchCompiled(d1, statements)
   } catch (error) {
-    await db.deleteFrom('products').where('id', '=', product.id).execute()
+    // 无外键约束，需显式清理已写入的子数据，避免残留半截商品；清理失败不遮蔽原始错误
+    try {
+      await batchCompiled(d1, await buildProductTreeDeletion(db, product.id))
+    } catch {
+      // ignore
+    }
     throw error
   }
 
@@ -892,6 +822,34 @@ export async function updateProduct(
   if (!row) return null
   const ids = (await loadCategoryIds(db, [id])).get(id) ?? []
   return toProduct(row, ids)
+}
+
+async function buildProductTreeDeletion(db: Kysely<DB>, id: number): Promise<CompiledQuery[]> {
+  const skuIds = (
+    await db.selectFrom('skus').select('id').where('product_id', '=', id).execute()
+  ).map((row) => row.id)
+
+  // 订单/入库明细保留商品快照（product_name 等），不删历史单据行
+  return [
+    ...(skuIds.length
+      ? [
+          db.deleteFrom('price_history').where('sku_id', 'in', skuIds).compile(),
+          db.deleteFrom('promotions').where('sku_id', 'in', skuIds).compile(),
+          db.deleteFrom('barcodes').where('sku_id', 'in', skuIds).compile(),
+        ]
+      : []),
+    db.deleteFrom('skus').where('product_id', '=', id).compile(),
+    db.deleteFrom('product_links').where('product_id', '=', id).compile(),
+    db.deleteFrom('product_links').where('linked_product_id', '=', id).compile(),
+    db.deleteFrom('product_categories').where('product_id', '=', id).compile(),
+    db.deleteFrom('products').where('id', '=', id).compile(),
+  ]
+}
+
+export async function purgeProduct(db: Kysely<DB>, d1: D1Database, id: number): Promise<void> {
+  const product = await db.selectFrom('products').select('id').where('id', '=', id).executeTakeFirst()
+  if (!product) throw new ApiError(404, 'PRODUCT_NOT_FOUND', '商品不存在')
+  await batchCompiled(d1, await buildProductTreeDeletion(db, id))
 }
 
 export async function addBarcode(

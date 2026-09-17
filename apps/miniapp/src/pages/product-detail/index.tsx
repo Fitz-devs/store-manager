@@ -206,6 +206,26 @@ export default function ProductDetailPage() {
     }
   }
 
+  const purge = async () => {
+    const archived = detail?.product.status === 'archived'
+    const confirm = await Taro.showModal({
+      title: '彻底删除商品',
+      content: archived
+        ? '商品、规格、条码将被永久删除且不可恢复；历史订单与入库记录保留。确定吗？'
+        : '该商品仍在售，删除后立即从商品列表消失且不可恢复；历史订单与入库记录保留。确定吗？',
+      confirmColor: '#dc2626',
+    })
+    if (!confirm.confirm) return
+    try {
+      await api.delete(`/api/products/${id}/purge`)
+      Taro.showToast({ title: '已彻底删除', icon: 'success' })
+      Taro.setStorageSync('sm_products_dirty', 1)
+      setTimeout(() => Taro.navigateBack(), 400)
+    } catch (error) {
+      Taro.showToast({ title: (error as Error).message, icon: 'none' })
+    }
+  }
+
   if (!detail) {
     if (loadError) {
       return (
@@ -236,7 +256,10 @@ export default function ProductDetailPage() {
           </View>
         )}
         <View className="detail-head-info">
-          <Text className="detail-name">{product.name}</Text>
+          <View className="row-between">
+            <Text className="detail-name">{product.name}</Text>
+            {product.status === 'archived' && <Text className="tag tag-warn">已下架</Text>}
+          </View>
           <Text className="muted">商品码 {primaryCode || '未设置'}</Text>
           {product.aliases.length > 0 && (
             <Text className="muted">别名：{product.aliases.join(' / ')}</Text>
@@ -317,42 +340,26 @@ export default function ProductDetailPage() {
               </View>
             ))}
             {(() => {
-              const prizeMap = new Map<number, (typeof skus)[0]['prizes'][0]>()
               const promoMap = new Map<number, (typeof skus)[0]['promotions'][0]>()
               for (const sku of skus) {
-                for (const prize of sku.prizes) prizeMap.set(prize.id, prize)
                 for (const promo of sku.promotions) promoMap.set(promo.id, promo)
               }
-              const prizes = [...prizeMap.values()]
               const promotions = [...promoMap.values()]
-              if (!prizes.length && !promotions.length) return null
+              if (!promotions.length) return null
               return (
                 <View className="product-rewards">
-                  {prizes.length > 0 && (
-                    <View className="price-cell">
-                      <Text className="muted">奖品</Text>
-                      {prizes.map((prize) => (
-                        <Text key={prize.id} className="danger-text">
-                          {prize.description || '兑奖'} ·{' '}
-                          {prize.extra_price === 0 ? '免费兑换' : `加${formatFen(prize.extra_price)}换购`}
-                        </Text>
-                      ))}
-                    </View>
-                  )}
-                  {promotions.length > 0 && (
-                    <View className="promo-list">
-                      {promotions.map((promo) => (
-                        <View key={promo.id} className="promo-chip">
-                          <Text className="promo-chip-text">🎁 {promo.content}</Text>
-                          {(promo.starts_at || promo.ends_at) && (
-                            <Text className="promo-chip-date">
-                              {promo.starts_at || '不限'} ~ {promo.ends_at || '不限'}
-                            </Text>
-                          )}
-                        </View>
-                      ))}
-                    </View>
-                  )}
+                  <View className="promo-list">
+                    {promotions.map((promo) => (
+                      <View key={promo.id} className="promo-chip">
+                        <Text className="promo-chip-text">🎁 {promo.content}</Text>
+                        {(promo.starts_at || promo.ends_at) && (
+                          <Text className="promo-chip-date">
+                            {promo.starts_at || '不限'} ~ {promo.ends_at || '不限'}
+                          </Text>
+                        )}
+                      </View>
+                    ))}
+                  </View>
                 </View>
               )
             })()}
@@ -474,8 +481,13 @@ export default function ProductDetailPage() {
       )}
 
       <View className="footer-bar">
-        <Button className="btn btn-danger" onClick={archive}>
-          下架
+        {product.status !== 'archived' && (
+          <Button className="btn btn-ghost" onClick={archive}>
+            下架
+          </Button>
+        )}
+        <Button className="btn btn-danger" onClick={purge}>
+          彻底删除
         </Button>
         <Button className="btn btn-primary" onClick={() => Taro.navigateTo({ url: `/pages/product-edit/index?id=${id}` })}>
           编辑商品

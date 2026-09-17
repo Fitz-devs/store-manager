@@ -42,7 +42,7 @@ export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   wechat: '微信',
   alipay: '支付宝',
   goods: '商品抵扣',
-  voucher: '兑奖抵扣',
+  other: '其他',
 }
 
 export const PRICE_TYPE_LABELS: Record<PriceType, string> = {

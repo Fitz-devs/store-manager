@@ -20,6 +20,7 @@ import {
   deleteProductLink,
   getProductDetail,
   listProducts,
+  purgeProduct,
   updateProduct,
 } from '../services/products'
 
@@ -83,6 +84,12 @@ router.delete('/:id', async (c) => {
   const product = await updateProduct(c.get('database').db, id, { status: 'archived' })
   if (!product) throw new ApiError(404, 'PRODUCT_NOT_FOUND', '商品不存在')
   return ok(c, { archived: true })
+})
+
+router.delete('/:id/purge', async (c) => {
+  const id = idSchema.parse(c.req.param('id'))
+  await purgeProduct(c.get('database').db, c.get('database').d1, id)
+  return ok(c, { purged: true })
 })
 
 router.post('/:id/skus', async (c) => {

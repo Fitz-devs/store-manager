@@ -1,8 +1,6 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 import {
-  prizeCreateSchema,
-  prizeUpdateSchema,
   promotionCreateSchema,
   promotionUpdateSchema,
   skuUpdateSchema,
@@ -12,12 +10,9 @@ import type { AppEnv } from '../env'
 import { ok, parseBody } from '../lib/errors'
 import {
   archiveSku,
-  createPrize,
   createPromotion,
-  deletePrize,
   deletePromotion,
   setStockStatus,
-  updatePrize,
   updatePromotion,
   updateSku,
 } from '../services/products'
@@ -65,26 +60,6 @@ router.patch('/promotions/:promotionId', async (c) => {
   const input = await parseBody(c, promotionUpdateSchema)
   const promotion = await updatePromotion(c.get('database').db, promotionId, input)
   return ok(c, promotion)
-})
-
-router.post('/:id/prizes', async (c) => {
-  const skuId = idSchema.parse(c.req.param('id'))
-  const input = await parseBody(c, prizeCreateSchema)
-  const prize = await createPrize(c.get('database').db, skuId, input)
-  return ok(c, prize, 201)
-})
-
-router.delete('/prizes/:prizeId', async (c) => {
-  const prizeId = idSchema.parse(c.req.param('prizeId'))
-  await deletePrize(c.get('database').db, prizeId)
-  return ok(c, { deleted: true })
-})
-
-router.patch('/prizes/:prizeId', async (c) => {
-  const prizeId = idSchema.parse(c.req.param('prizeId'))
-  const input = await parseBody(c, prizeUpdateSchema)
-  const prize = await updatePrize(c.get('database').db, prizeId, input)
-  return ok(c, prize)
 })
 
 export default router

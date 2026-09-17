@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import Taro, { useDidShow, useRouter } from '@tarojs/taro'
 import { Button, Image, Input, Switch, Text, Textarea, View } from '@tarojs/components'
-import type { Category, LinkedProduct, ProductDetail, ProductListItem, Promotion, SkuWithBarcodes } from '@sm/shared'
+import type { Category, LinkedProduct, ProductDetail, ProductListItem, SkuWithBarcodes } from '@sm/shared'
 import { api, fileUrl } from '../../api/client'
 import { DateRangeField } from '../../components/date-range-field'
 import { TagInput } from '../../components/tag-input'
@@ -19,22 +19,11 @@ interface PromoDraft {
   ends: string
 }
 
-interface PrizeDraft {
-  description: string
-  extra: string
-}
-
 interface PromoRow {
   key: string | number
   content: string
   starts: string | null
   ends: string | null
-}
-
-interface PrizeRow {
-  key: string | number
-  description: string | null
-  extra: number
 }
 
 interface ProductDraft {
@@ -51,7 +40,6 @@ interface ProductDraft {
   retailPrice: string
   friendPrice: string
   createPromos: PromoDraft[]
-  createPrizes: PrizeDraft[]
 }
 
 const DRAFT_KEY = 'sm_product_draft'
@@ -130,11 +118,8 @@ export default function ProductEdit() {
   const [retailPrice, setRetailPrice] = useState('')
   const [friendPrice, setFriendPrice] = useState('')
   const [createPromos, setCreatePromos] = useState<PromoDraft[]>([])
-  const [createPrizes, setCreatePrizes] = useState<PrizeDraft[]>([])
   const [busy, setBusy] = useState(false)
   const [tried, setTried] = useState(false)
-  const [showOptional, setShowOptional] = useState(editId !== null)
-  const [showRewards, setShowRewards] = useState(editId !== null)
   const [draftNotice, setDraftNotice] = useState(false)
   const draftRestoredRef = useRef(false)
   const draftTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -199,7 +184,6 @@ export default function ProductEdit() {
       retailPrice,
       friendPrice,
       createPromos,
-      createPrizes,
     }
     draftTimer.current = setTimeout(() => {
       try {
@@ -226,7 +210,6 @@ export default function ProductEdit() {
     retailPrice,
     friendPrice,
     createPromos,
-    createPrizes,
   ])
 
   const applyDraft = (draft: ProductDraft) => {
@@ -243,7 +226,6 @@ export default function ProductEdit() {
     setRetailPrice(draft.retailPrice || '')
     setFriendPrice(draft.friendPrice || '')
     setCreatePromos(draft.createPromos || [])
-    setCreatePrizes(draft.createPrizes || [])
     setDraftNotice(true)
   }
 
@@ -266,7 +248,6 @@ export default function ProductEdit() {
     setRetailPrice('')
     setFriendPrice('')
     setCreatePromos([])
-    setCreatePrizes([])
     setTried(false)
     setDraftNotice(false)
   }
@@ -311,7 +292,6 @@ export default function ProductEdit() {
 
       if (fromPurchase) {
         setStep(1)
-        setShowOptional(true)
         // 丢弃旧草稿，避免上次 URL 乱码写回销售单位
         try {
           Taro.removeStorageSync(DRAFT_KEY)
@@ -815,9 +795,8 @@ export default function ProductEdit() {
 
   const steps = [
     { id: 1, label: '常用' },
-    { id: 2, label: '奖品' },
-    { id: 3, label: '优惠' },
-    { id: 4, label: '其他' },
+    { id: 2, label: '优惠' },
+    { id: 3, label: '其他' },
   ]
 
   return (
@@ -1188,44 +1167,6 @@ export default function ProductEdit() {
         <>
           <View className="card">
             {!editId ? (
-              <Text className="muted">请先在「常用」创建商品，再添加奖品</Text>
-            ) : (() => {
-              const sharedSku = detail?.skus.find((item) => item.status === 'active') ?? detail?.skus[0] ?? null
-              return sharedSku ? (
-                <PrizeRows
-                  rows={sharedSku.prizes.map((item) => ({
-                    key: item.id,
-                    description: item.description,
-                    extra: item.extra_price,
-                  }))}
-                  onAdd={async (input) => {
-                    await api.post(`/api/skus/${sharedSku.id}/prizes`, input)
-                    markDirty()
-                    load()
-                  }}
-                  onRemove={async (key) => {
-                    await api.delete(`/api/skus/prizes/${key}`)
-                    markDirty()
-                    load()
-                  }}
-                  onUpdate={async (key, input) => {
-                    await api.patch(`/api/skus/prizes/${key}`, input)
-                    markDirty()
-                    load()
-                  }}
-                />
-              ) : (
-                <Text className="muted">暂无版本</Text>
-              )
-            })()}
-          </View>
-        </>
-      )}
-
-      {step === 3 && (
-        <>
-          <View className="card">
-            {!editId ? (
               <Text className="muted">请先在「常用」创建商品，再添加优惠</Text>
             ) : (() => {
               const sharedSku = detail?.skus.find((item) => item.status === 'active') ?? detail?.skus[0] ?? null
@@ -1261,7 +1202,7 @@ export default function ProductEdit() {
         </>
       )}
 
-      {step === 4 && (
+      {step === 3 && (
         <>
           <View className="card">
             <View className="field">
@@ -1333,33 +1274,6 @@ export default function ProductEdit() {
           </View>
         </>
       )}
-    </View>
-  )
-}
-
-function Collapse({
-  title,
-  hint,
-  open,
-  onToggle,
-  children,
-}: {
-  title: string
-  hint?: string
-  open: boolean
-  onToggle: () => void
-  children: React.ReactNode
-}) {
-  return (
-    <View>
-      <View className="collapse-head" onClick={onToggle}>
-        <Text className="section-title collapse-title">
-          {title}
-          {hint ? <Text className="muted"> · {hint}</Text> : null}
-        </Text>
-        <Text className="collapse-arrow">{open ? '▾' : '▸'}</Text>
-      </View>
-      {open ? children : null}
     </View>
   )
 }
@@ -1460,117 +1374,6 @@ function PromotionRows({
             </Button>
             <Button className="btn btn-primary" onClick={submit}>
               {editingKey != null ? '保存修改' : '保存优惠'}
-            </Button>
-          </View>
-        </View>
-      )}
-    </View>
-  )
-}
-
-function PrizeRows({
-  rows,
-  onAdd,
-  onRemove,
-  onUpdate,
-}: {
-  rows: Array<{ key: string | number; description: string | null; extra: number }>
-  onAdd: (input: { description: string | null; extra_price: number }) => void | Promise<void>
-  onRemove: (key: string | number) => void | Promise<void>
-  onUpdate?: (
-    key: string | number,
-    input: { description: string | null; extra_price: number },
-  ) => void | Promise<void>
-}) {
-  const [open, setOpen] = useState(false)
-  const [editingKey, setEditingKey] = useState<string | number | null>(null)
-  const [description, setDescription] = useState('')
-  const [extra, setExtra] = useState('')
-
-  const resetForm = () => {
-    setOpen(false)
-    setEditingKey(null)
-    setDescription('')
-    setExtra('')
-  }
-
-  const startEdit = (row: { key: string | number; description: string | null; extra: number }) => {
-    setEditingKey(row.key)
-    setOpen(true)
-    setDescription(row.description || '')
-    setExtra(fenToYuan(row.extra))
-  }
-
-  const submit = async () => {
-    const payload = {
-      description: description.trim() || null,
-      extra_price: extra.trim() ? yuanToFen(extra) : 0,
-    }
-    if (editingKey != null && onUpdate) {
-      await onUpdate(editingKey, payload)
-    } else {
-      await onAdd(payload)
-    }
-    resetForm()
-  }
-
-  const removeRow = async (key: string | number) => {
-    const ok = await Taro.showModal({ title: '删除奖品', content: '确定删除这条奖品吗？' })
-    if (!ok.confirm) return
-    await onRemove(key)
-  }
-
-  return (
-    <View>
-      {rows.map((row) => (
-        <View key={row.key} className="list-row">
-          <View className="list-row-main">
-            <Text>{row.description || '兑奖'}</Text>
-            <Text className="muted">
-              {row.extra === 0 ? '免费兑换' : `加${formatFen(row.extra)}换购`}
-            </Text>
-          </View>
-          <View className="row-actions">
-            <Text className="primary-text" onClick={() => startEdit(row)}>
-              编辑
-            </Text>
-            <Text className="danger-text" onClick={() => removeRow(row.key)}>
-              删除
-            </Text>
-          </View>
-        </View>
-      ))}
-      {!rows.length && !open && <Text className="muted">暂无奖品</Text>}
-      {!open ? (
-        <Button className="btn btn-ghost full-btn" onClick={() => setOpen(true)}>
-          添加奖品
-        </Button>
-      ) : (
-        <View className="inline-form">
-          <View className="field-row">
-            <Input
-              className="input"
-              placeholder={PH.prizeDesc}
-              value={description}
-              onInput={(event) => setDescription(event.detail.value)}
-            />
-            <Input
-              className="input prize-extra-input"
-              type="digit"
-              placeholder="0 或 1"
-              value={extra}
-              onInput={(event) => setExtra(event.detail.value)}
-            />
-          </View>
-          <Text className="muted" style={{ marginBottom: '12px' }}>
-            加价为 0 表示免费兑换
-          </Text>
-          <View className="inline-actions">
-            <Button className="btn btn-ghost" onClick={resetForm}>
-              取消
-            </Button>
-            <Button className="btn btn-primary" onClick={submit}>
-              {editingKey != null ? '保存修改' : '保存奖品'}
             </Button>
           </View>
         </View>

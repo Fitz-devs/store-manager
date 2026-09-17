@@ -49,14 +49,6 @@ export interface PromotionsTable {
   created_at: string
 }
 
-export interface PrizesTable {
-  id: Generated<number>
-  sku_id: number
-  description: string | null
-  extra_price: number
-  created_at: string
-}
-
 export interface ProductLinksTable {
   id: Generated<number>
   product_id: number
@@ -227,7 +219,6 @@ export interface DB {
   skus: SkusTable
   barcodes: BarcodesTable
   promotions: PromotionsTable
-  prizes: PrizesTable
   product_links: ProductLinksTable
   price_history: PriceHistoryTable
   purchases: PurchasesTable

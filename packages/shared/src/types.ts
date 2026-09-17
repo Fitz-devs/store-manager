@@ -62,14 +62,6 @@ export interface Promotion {
   created_at: string
 }
 
-export interface Prize {
-  id: number
-  sku_id: number
-  description: string | null
-  extra_price: number
-  created_at: string
-}
-
 export interface ProductLink {
   id: number
   product_id: number
@@ -101,7 +93,6 @@ export interface Barcode {
 export interface SkuWithBarcodes extends Sku {
   barcodes: Barcode[]
   promotions: Promotion[]
-  prizes: Prize[]
 }
 
 export interface ProductListItem extends Product {

@@ -69,16 +69,6 @@ export const promotionUpdateSchema = z.object({
   ends_at: nullableText(40),
 })
 
-export const prizeCreateSchema = z.object({
-  description: nullableText(100),
-  extra_price: fen.default(0),
-})
-
-export const prizeUpdateSchema = z.object({
-  description: nullableText(100),
-  extra_price: fen.optional(),
-})
-
 export const linkCreateSchema = z.object({
   linked_product_id: id,
   relation: z.string().trim().max(20).default('box_piece'),
@@ -97,7 +87,6 @@ export const productCreateSchema = z.object({
   sku: skuInputSchema,
   barcodes: z.array(barcodeInputSchema).max(20).default([]),
   promotions: z.array(promotionCreateSchema).max(20).default([]),
-  prizes: z.array(prizeCreateSchema).max(20).default([]),
 })
 
 export const productUpdateSchema = z.object({
@@ -262,6 +251,7 @@ export const listQuerySchema = z.object({
   q: z.string().trim().max(100).optional(),
   category: z.string().trim().max(50).optional(),
   stock: z.enum(['all', 'in_stock', 'out_of_stock']).default('all'),
+  status: z.enum(['active', 'archived', 'all']).default('active'),
   page: z.coerce.number().int().positive().default(1),
   page_size: z.coerce.number().int().positive().max(100).default(20),
 })
