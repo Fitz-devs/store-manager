@@ -101,13 +101,12 @@ router.patch('/:id', async (c) => {
 router.delete('/:id', async (c) => {
   const { db } = c.get('database')
   const id = idSchema.parse(c.req.param('id'))
-  if (id === c.get('user').id) throw new ApiError(400, 'SELF_DISABLE', '不能停用自己的账号')
-  await db
-    .updateTable('users')
-    .set({ status: 'disabled', updated_at: nowIso() })
-    .where('id', '=', id)
-    .execute()
-  return ok(c, { disabled: true })
+  if (id === c.get('user').id) throw new ApiError(400, 'SELF_DELETE', '不能删除自己的账号')
+  const row = await db.selectFrom('users').selectAll().where('id', '=', id).executeTakeFirst()
+  if (!row) throw new ApiError(404, 'USER_NOT_FOUND', '账号不存在')
+  // 历史单据保留 operator_id，经办人展示为「-」（快照约定，不做级联清理）
+  await db.deleteFrom('users').where('id', '=', id).execute()
+  return ok(c, { deleted: true })
 })
 
 export default router

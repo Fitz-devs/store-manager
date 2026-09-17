@@ -111,10 +111,55 @@ export default function PurchaseNew() {
   }
 
   const ocrAutoRef = useRef(false)
+  /** 「去编辑」打开的行下标，返回时刷新该行库内价 */
+  const editReturnIndexRef = useRef<number | null>(null)
+  const ocrRowsRef = useRef<OcrRowState[]>([])
+  ocrRowsRef.current = ocrRows
+
+  /** 编辑商品返回后：以库内当前价刷新该行并重算价差提示 */
+  const refreshRowFromServer = async (index: number) => {
+    const row = ocrRowsRef.current[index]
+    if (!row?.product_id) return
+    try {
+      const detail = await api.get<ProductDetail>(`/api/products/${row.product_id}`)
+      const sku = detail.skus.find((item) => item.id === row.sku_id) ?? detail.skus[0]
+      setOcrRows((previous) => {
+        const next = [...previous]
+        const target = next[index]
+        if (!target) return previous
+        const conv = Number(target.conversion) || 1
+        const unitIsPiece = /^(件|个|支|瓶|袋|盒|罐)$/.test(target.unit || '')
+        const docBaseFen =
+          target.unit_price === null
+            ? null
+            : Math.round((target.unit_price * 100) / (unitIsPiece ? 1 : Math.max(conv, 1)))
+        const latest = sku?.latest_purchase_price ?? null
+        next[index] = {
+          ...target,
+          productName: detail.product.name,
+          unitName: sku?.sale_unit ?? target.unitName,
+          retail_price: sku?.retail_price ?? null,
+          friend_price: sku?.friend_price ?? null,
+          latest_purchase_price: latest,
+          priceWarn: docBaseFen !== null && latest !== null && Math.abs(docBaseFen - latest) >= 1,
+          status: 'matched',
+        }
+        return next
+      })
+    } catch {
+      // ignore
+    }
+  }
+
   useDidShow(() => {
     if (router.params.ocr === '1' && !ocrAutoRef.current) {
       ocrAutoRef.current = true
       takePhoto()
+    }
+    if (editReturnIndexRef.current !== null) {
+      const index = editReturnIndexRef.current
+      editReturnIndexRef.current = null
+      void refreshRowFromServer(index)
     }
     // 从创建商品页返回：把新建 sku 绑到对应 OCR 行
     try {
@@ -265,7 +310,10 @@ export default function PurchaseNew() {
   const total = items.reduce((sum, item) => sum + (yuanToFen(item.unit_price) * (Number(item.qty) || 0)), 0)
 
   const submit = async () => {
-    if (busy) return
+    if (busy) {
+      Taro.showToast({ title: '正在入库，请稍候', icon: 'none' })
+      return
+    }
     if (!items.length) {
       Taro.showToast({ title: '请先添加入库商品', icon: 'none' })
       return
@@ -312,11 +360,8 @@ export default function PurchaseNew() {
       setOcrRows([])
       setImageKeys([])
       setOcrRaw('')
-      try {
-        await promptAfterPurchaseLowPrice(lowPriceLines)
-      } catch {
-        // 低价提示失败不影响跳转
-      }
+      // 低价提示不阻塞跳转：入库已成功，避免弹层异常时卡住页面
+      void promptAfterPurchaseLowPrice(lowPriceLines).catch(() => undefined)
       setTimeout(() => Taro.redirectTo({ url: `/pages/purchase-detail/index?id=${purchase.id}` }), 300)
     } catch (error) {
       try {
@@ -682,7 +727,8 @@ export default function PurchaseNew() {
     const row = ocrRows[index]
     if (!row) return
     if (isEdit && row.product_id) {
-      // 编辑已有商品：把识别到的全部字段带过去，便于核对/更新
+      // 编辑已有商品：把识别到的全部字段带过去，便于核对/更新；返回后刷新该行
+      editReturnIndexRef.current = index
       try {
         Taro.setStorageSync('sm_product_prefill', {
           from: 'purchase',
@@ -840,12 +886,11 @@ export default function PurchaseNew() {
                     </View>
                     <View className="row-between">
                       {row.status === 'matched' ? (
-                        <Text className={`tag ${row.priceWarn ? 'tag-warn' : 'tag-success'}`}>
-                          已匹配 · {row.productName}
-                          {row.priceWarn ? ' · 价差' : ''}
+                        <Text className={`tag ${row.priceWarn ? 'tag-warn' : 'tag-primary'}`}>
+                          {row.priceWarn ? `已匹配 · ${row.productName} · 价差` : `已完善 · ${row.productName}`}
                         </Text>
                       ) : row.status === 'created' ? (
-                        <Text className="tag tag-success">已建品 · {row.productName}</Text>
+                        <Text className="tag tag-primary">已完善 · {row.productName}</Text>
                       ) : row.status === 'missing' ? (
                         <Text className="tag tag-warn">库内无此商品，请创建</Text>
                       ) : (
@@ -974,7 +1019,7 @@ export default function PurchaseNew() {
                       ) : null}
                       {row.status === 'matched' && row.sku_id ? (
                         <Text className="muted" style={{ alignSelf: 'center' }}>
-                          {row.priceWarn ? '价差请确认' : '已就绪'}
+                          {row.priceWarn ? '价差请确认' : '已就绪，将进入入库清单'}
                         </Text>
                       ) : null}
                       {row.status === 'created' && row.sku_id ? (
@@ -999,7 +1044,11 @@ export default function PurchaseNew() {
               <Text className="price-text footer-value">{boundCount}</Text>
               <Text className="muted">项商品</Text>
             </View>
-            <Button className="btn btn-primary" disabled={!boundCount} onClick={goStep2}>
+            <Button
+              className="btn btn-primary"
+              disabled={boundCount ? undefined : true}
+              onClick={goStep2}
+            >
               下一步：入库清单
             </Button>
           </View>

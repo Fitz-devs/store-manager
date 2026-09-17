@@ -85,7 +85,7 @@ export const api = {
 
 export async function uploadImage(
   filePath: string,
-  scope: 'products' | 'purchases' | 'deliveries' | 'misc',
+  scope: 'products' | 'purchases' | 'deliveries' | 'payments' | 'misc',
 ): Promise<{ key: string; url: string }> {
   const token = getToken()
   const res = await Taro.uploadFile({

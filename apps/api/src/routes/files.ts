@@ -7,7 +7,7 @@ import { shanghaiDateString, uuid } from '../lib/ids'
 
 const router = new Hono<AppEnv>()
 
-const SCOPES = new Set(['products', 'purchases', 'deliveries', 'misc'])
+const SCOPES = new Set(['products', 'purchases', 'deliveries', 'payments', 'misc'])
 const MAX_SIZE = 8 * 1024 * 1024
 
 function extensionFor(contentType: string): string {

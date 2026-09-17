@@ -1,13 +1,12 @@
 import type { Kysely } from 'kysely'
 import type { OrderWithItems, Payment, PaymentCreateInput } from '@sm/shared'
+import { fenToYuan } from '@sm/shared'
 import type { DB } from '../db/schema'
 import { ApiError } from '../lib/errors'
 import { nextPaymentNo, nowIso } from '../lib/ids'
-import { createPurchase } from './purchases'
 import { getOrder } from './orders'
 
 export async function addPayment(
-  d1: D1Database,
   db: Kysely<DB>,
   input: PaymentCreateInput,
   operatorId: number,
@@ -20,29 +19,12 @@ export async function addPayment(
   if (!order) throw new ApiError(404, 'ORDER_NOT_FOUND', '订单不存在')
   if (order.status === 'void') throw new ApiError(400, 'ORDER_VOID', '订单已作废')
   if (input.amount <= 0) throw new ApiError(400, 'VALIDATION', '回款金额必须大于 0')
-
-  const now = nowIso()
-  let purchaseId: number | null = null
-
-  if (input.method === 'goods') {
-    if (!input.goods_items?.length) {
-      throw new ApiError(400, 'VALIDATION', '商品抵扣需要录入抵扣商品')
-    }
-    const purchase = await createPurchase(
-      d1,
-      db,
-      {
-        supplier_name: null,
-        ordered_at: now,
-        note: `订单 ${order.order_no} 商品抵扣`,
-        items: input.goods_items,
-        price_updates: [],
-      },
-      { applyPurchasePrice: false, operatorId },
-    )
-    purchaseId = purchase.id
+  const remaining = Math.max(0, order.total - order.paid_amount)
+  if (input.amount > remaining) {
+    throw new ApiError(400, 'VALIDATION', `回款金额不能超过未收余款 ${fenToYuan(remaining)} 元`)
   }
 
+  const now = nowIso()
   const paymentNo = await nextPaymentNo(db)
   const paymentRow = await db
     .insertInto('payments')
@@ -52,7 +34,8 @@ export async function addPayment(
       customer_id: order.customer_id,
       method: input.method,
       amount: input.amount,
-      purchase_id: purchaseId,
+      purchase_id: null,
+      photo_key: input.photo_key ?? null,
       note: input.note ?? null,
       operator_id: operatorId,
       received_at: input.received_at ?? now,
@@ -79,6 +62,7 @@ export async function addPayment(
       method: paymentRow.method as Payment['method'],
       amount: paymentRow.amount,
       purchase_id: paymentRow.purchase_id,
+      photo_key: paymentRow.photo_key,
       note: paymentRow.note,
       operator_id: paymentRow.operator_id,
       received_at: paymentRow.received_at,

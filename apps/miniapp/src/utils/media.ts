@@ -3,7 +3,7 @@ import { getToken, uploadImage } from '../api/client'
 import { API_BASE } from '../config'
 import { IS_WEAPP } from './env'
 
-export type UploadScope = 'products' | 'purchases' | 'deliveries' | 'misc'
+export type UploadScope = 'products' | 'purchases' | 'deliveries' | 'payments' | 'misc'
 
 export interface LocalImage {
   path: string

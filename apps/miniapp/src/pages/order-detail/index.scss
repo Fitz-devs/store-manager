@@ -91,24 +91,6 @@
   border-bottom: 1px solid var(--sm-line);
 }
 
-.goods-item {
-  padding: 16px 0;
-  border-bottom: 1px solid var(--sm-line);
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.field-row {
-  display: flex;
-  gap: 12px;
-}
-
-.quarter {
-  flex: 1;
-  min-width: 0;
-}
-
 .inline-actions {
   display: flex;
   gap: 16px;
@@ -126,4 +108,30 @@
   top: 0;
   width: 10px;
   height: 10px;
+}
+
+.payment-main {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.payment-photo {
+  width: 72px;
+  height: 72px;
+  border-radius: 8px;
+}
+
+.pay-photo-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.pay-photo-thumb {
+  width: 120px;
+  height: 120px;
+  border-radius: 8px;
 }

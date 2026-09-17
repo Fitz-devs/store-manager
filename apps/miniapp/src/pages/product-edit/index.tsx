@@ -321,14 +321,10 @@ export default function ProductEdit() {
             cache?: {
               name?: string | null
               brand?: string | null
-              image_url?: string | null
-              image_key?: string | null
             }
           }>(`/api/barcodes/lookup?code=${encodeURIComponent(prefilledBarcode)}`)
           if (lookup.cache?.name && !prefilledName) setName(lookup.cache.name)
           if (lookup.cache?.brand) setBrand(lookup.cache.brand)
-          const cacheImage = lookup.cache?.image_key || lookup.cache?.image_url
-          if (cacheImage) setImageKey(cacheImage)
         } catch {
           // 条码补全失败时保持手动录入
         }

@@ -9,10 +9,12 @@ import type {
 } from '@sm/shared'
 import { calcAmount } from '@sm/shared'
 import type { DB } from '../db/schema'
+import type { StorageAdapter } from '../adapters/storage'
 import { batchCompiled } from '../db/batch'
 import { ApiError } from '../lib/errors'
+import { parseStoredImageKeys } from '../lib/images'
 import { nextOrderNo, nextPaymentNo, nowIso } from '../lib/ids'
-import { createPurchase, loadSkuMeta } from './purchases'
+import { loadSkuMeta } from './purchases'
 
 export async function createOrder(
   d1: D1Database,
@@ -39,29 +41,10 @@ export async function createOrder(
   const subtotal = computed.reduce((sum, row) => sum + row.amount, 0)
   const discount = Math.min(input.discount ?? 0, subtotal)
   const total = Math.max(0, subtotal - discount)
-  const paymentAmount = input.payment?.amount ?? 0
-  if (input.payment && input.payment.amount > total) {
+  const payments = [...(input.payments ?? []), ...(input.payment ? [input.payment] : [])]
+  const paymentsTotal = payments.reduce((sum, p) => sum + p.amount, 0)
+  if (paymentsTotal > total) {
     throw new ApiError(400, 'VALIDATION', '实收金额不能大于订单金额')
-  }
-  if (input.payment?.method === 'goods' && !input.payment.goods_items?.length) {
-    throw new ApiError(400, 'VALIDATION', '以货换货需要录入抵扣商品')
-  }
-
-  let goodsPurchaseId: number | null = null
-  if (input.payment?.method === 'goods' && input.payment.goods_items?.length) {
-    const purchase = await createPurchase(
-      d1,
-      db,
-      {
-        supplier_name: null,
-        ordered_at: now,
-        note: `订单 ${orderNo} 以货换货`,
-        items: input.payment.goods_items,
-        price_updates: [],
-      },
-      { applyPurchasePrice: false, operatorId },
-    )
-    goodsPurchaseId = purchase.id
   }
   const delivery = input.delivery
   const deliveryRequired = delivery?.required ? 1 : 0
@@ -91,7 +74,7 @@ export async function createOrder(
       subtotal,
       discount,
       total,
-      paid_amount: paymentAmount,
+      paid_amount: paymentsTotal,
       is_credit: input.is_credit ? 1 : 0,
       status: 'open',
       delivery_status: deliveryRequired ? 'pending' : 'none',
@@ -122,7 +105,9 @@ export async function createOrder(
       .compile(),
   )
 
-  if (input.payment && paymentAmount > 0) {
+  for (let index = 0; index < payments.length; index += 1) {
+    const payment = payments[index]!
+    if (payment.amount <= 0) continue
     const paymentNo = await nextPaymentNo(db)
     statements.push(
       db
@@ -131,10 +116,10 @@ export async function createOrder(
           payment_no: paymentNo,
           order_id: order.id,
           customer_id: order.customer_id,
-          method: input.payment.method,
-          amount: paymentAmount,
-          purchase_id: goodsPurchaseId,
-          note: input.payment.note ?? null,
+          method: payment.method,
+          amount: payment.amount,
+          photo_key: payment.photo_key ?? null,
+          note: payment.note ?? null,
           operator_id: operatorId,
           received_at: now,
           created_at: now,
@@ -147,6 +132,60 @@ export async function createOrder(
   const detail = await getOrder(db, order.id)
   if (!detail) throw new ApiError(500, 'CREATE_FAILED', '订单创建失败')
   return detail
+}
+
+export async function purgeOrder(
+  db: Kysely<DB>,
+  d1: D1Database,
+  id: number,
+  storage: StorageAdapter,
+): Promise<void> {
+  const order = await db
+    .selectFrom('orders')
+    .select(['id', 'delivery_photo_key'])
+    .where('id', '=', id)
+    .executeTakeFirst()
+  if (!order) throw new ApiError(404, 'ORDER_NOT_FOUND', '订单不存在')
+  // 本单回款里因商品抵扣衍生的入库单一并删除
+  const paymentRows = await db
+    .selectFrom('payments')
+    .select(['purchase_id', 'photo_key'])
+    .where('order_id', '=', id)
+    .execute()
+  const purchaseIds = [
+    ...new Set(
+      paymentRows.map((row) => row.purchase_id).filter((pid): pid is number => pid !== null),
+    ),
+  ]
+  let derivedImageKeys: string[] = []
+  if (purchaseIds.length) {
+    const purchaseRows = await db
+      .selectFrom('purchases')
+      .select(['id', 'image_keys'])
+      .where('id', 'in', purchaseIds)
+      .execute()
+    derivedImageKeys = purchaseRows.flatMap((row) => parseStoredImageKeys(row.image_keys))
+  }
+  const statements = [
+    ...(purchaseIds.length
+      ? [
+          db.deleteFrom('purchase_items').where('purchase_id', 'in', purchaseIds).compile(),
+          db.deleteFrom('purchases').where('id', 'in', purchaseIds).compile(),
+        ]
+      : []),
+    db.deleteFrom('payments').where('order_id', '=', id).compile(),
+    db.deleteFrom('order_items').where('order_id', '=', id).compile(),
+    db.deleteFrom('orders').where('id', '=', id).compile(),
+  ]
+  await batchCompiled(d1, statements)
+  const photoKeys = [
+    order.delivery_photo_key,
+    ...derivedImageKeys,
+    ...paymentRows.map((row) => row.photo_key),
+  ].filter((key): key is string => Boolean(key))
+  for (const key of photoKeys) {
+    await storage.delete(key).catch(() => undefined)
+  }
 }
 
 export async function getOrder(db: Kysely<DB>, id: number): Promise<OrderWithItems | null> {
@@ -184,6 +223,7 @@ export async function getOrder(db: Kysely<DB>, id: number): Promise<OrderWithIte
     method: payment.method as Payment['method'],
     amount: payment.amount,
     purchase_id: payment.purchase_id,
+    photo_key: payment.photo_key,
     note: payment.note,
     operator_id: payment.operator_id,
     operator_name: payment.operator_name,

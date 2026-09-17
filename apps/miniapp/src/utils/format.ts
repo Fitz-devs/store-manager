@@ -37,12 +37,13 @@ export function formatDay(iso: string | null | undefined): string {
   return iso.slice(0, 10)
 }
 
-export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
+/** 历史数据仍存在 goods（换货抵扣）回款，展示时需要标签 */
+export const PAYMENT_METHOD_LABELS: Record<PaymentMethod | 'goods', string> = {
   cash: '现金',
   wechat: '微信',
   alipay: '支付宝',
-  goods: '商品抵扣',
   other: '其他',
+  goods: '商品抵扣（已停用）',
 }
 
 export const PRICE_TYPE_LABELS: Record<PriceType, string> = {

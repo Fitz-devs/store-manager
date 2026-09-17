@@ -683,3 +683,66 @@ taro-input-core .weui-input {
 .sm-empty-wrap .sm-empty {
   padding: 12px 20px 0;
 }
+
+.sm-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 72px 24px;
+}
+
+.sm-empty-figure {
+  margin-bottom: 20px;
+}
+
+.sm-empty-box {
+  position: relative;
+  width: 88px;
+  height: 60px;
+  background: var(--sm-bg, #f3f4f6);
+  border: 1px solid var(--sm-line, #e5e7eb);
+  border-radius: 8px;
+}
+
+.sm-empty-flap {
+  position: absolute;
+  top: -10px;
+  width: 44px;
+  height: 10px;
+  background: var(--sm-line, #e5e7eb);
+  border-radius: 3px 3px 0 0;
+}
+
+.sm-empty-flap-left {
+  left: 1px;
+  transform: skewX(-8deg);
+}
+
+.sm-empty-flap-right {
+  right: 1px;
+  transform: skewX(8deg);
+}
+
+.sm-empty-dot {
+  position: absolute;
+  right: -10px;
+  bottom: -10px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--sm-primary-soft, #eff6ff);
+  border: 1px solid var(--sm-primary, #2563eb);
+}
+
+.sm-empty-state-title {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: var(--sm-ink, #111827);
+  margin-bottom: 8rpx;
+}
+
+.sm-empty-state-sub {
+  font-size: 26rpx;
+  color: var(--sm-ink-2, #6b7280);
+  text-align: center;
+}

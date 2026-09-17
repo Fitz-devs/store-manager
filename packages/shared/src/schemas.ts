@@ -192,6 +192,13 @@ export const orderItemInputSchema = z.object({
   promotion_text: nullableText(200),
 })
 
+export const orderPaymentInputSchema = z.object({
+  method: z.enum(PAYMENT_METHODS),
+  amount: fen,
+  note: nullableText(200),
+  photo_key: nullableText(300),
+})
+
 export const orderCreateSchema = z.object({
   customer_id: id.nullable().optional(),
   customer_name: nullableText(50),
@@ -200,14 +207,9 @@ export const orderCreateSchema = z.object({
   discount: fen.default(0),
   delivery: deliveryInputSchema.optional(),
   items: z.array(orderItemInputSchema).min(1).max(200),
-  payment: z
-    .object({
-      method: z.enum(PAYMENT_METHODS),
-      amount: fen,
-      note: nullableText(200),
-      goods_items: z.array(purchaseItemInputSchema).max(200).optional(),
-    })
-    .optional(),
+  // payment 为旧版小程序单笔付款兼容字段；新客户端用 payments 多笔组合
+  payment: orderPaymentInputSchema.optional(),
+  payments: z.array(orderPaymentInputSchema).max(10).optional(),
 })
 
 export const orderDeliverSchema = z.object({
@@ -221,8 +223,8 @@ export const paymentCreateSchema = z.object({
   method: z.enum(PAYMENT_METHODS),
   amount: fen,
   note: nullableText(200),
+  photo_key: nullableText(300),
   received_at: z.string().max(40).optional(),
-  goods_items: z.array(purchaseItemInputSchema).max(200).optional(),
 })
 
 export const ocrRequestSchema = z.object({

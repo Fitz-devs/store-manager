@@ -105,21 +105,8 @@ router.post('/purchase', async (c) => {
     })
   }
 
-  // 未配置智谱 Key：开发可用 mock；生产应配置 ZHIPU_API_KEY
-  const raw = JSON.stringify(MOCK_PAYLOAD)
-  const draft = buildOcrDraft(MOCK_PAYLOAD, {
-    image_key,
-    page_index: pageIndex,
-    model: 'mock',
-    raw,
-  })
-  return ok(c, {
-    rows: draftToLegacyRows(draft),
-    draft,
-    headers: draft.headers,
-    model: 'mock',
-    raw,
-  })
+  // 未配置智谱 Key：拒绝而非静默返回假数据，避免假单据混进真实入库
+  throw new ApiError(503, 'OCR_NOT_CONFIGURED', 'OCR 未配置：请配置 ZHIPU_API_KEY 后重试')
 })
 
 export default router

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import Taro, { useDidShow, useRouter } from '@tarojs/taro'
 import { Button, Canvas, Image, Input, Text, View } from '@tarojs/components'
-import type { OrderWithItems, ProductDetail, ProductListItem, User } from '@sm/shared'
+import type { OrderWithItems, User } from '@sm/shared'
 import { api, fileUrl, getUser } from '../../api/client'
 import { PH } from '../../config/placeholders'
 import { useAuthGuard } from '../../utils/auth'
@@ -18,16 +18,7 @@ import {
 import { watermarkPhoto } from '../../utils/watermark'
 import './index.scss'
 
-type PayMethod = 'cash' | 'wechat' | 'alipay' | 'goods' | 'other'
-
-interface GoodsItem {
-  sku_id: number
-  productName: string
-  unit_name: string
-  conversion: string
-  qty: string
-  unit_price: string
-}
+type PayMethod = 'cash' | 'wechat' | 'alipay' | 'other'
 
 export default function OrderDetailPage() {
   useAuthGuard()
@@ -41,9 +32,8 @@ export default function OrderDetailPage() {
   const [amount, setAmount] = useState('')
   const [note, setNote] = useState('')
   const [otherReason, setOtherReason] = useState('')
-  const [goodsItems, setGoodsItems] = useState<GoodsItem[]>([])
-  const [keyword, setKeyword] = useState('')
-  const [results, setResults] = useState<ProductListItem[]>([])
+  const [payPhotoKey, setPayPhotoKey] = useState<string | null>(null)
+  const [uploadingPayPhoto, setUploadingPayPhoto] = useState(false)
   const [busy, setBusy] = useState(false)
 
   const load = async () => {
@@ -96,73 +86,26 @@ export default function OrderDetailPage() {
     }
   }
 
-  const search = async (value?: string) => {
-    const q = (value ?? keyword).trim()
-    if (!q) {
-      setResults([])
-      return
-    }
+  const addPayPhoto = async () => {
     try {
-      const data = await api.get<{ items: ProductListItem[] }>(
-        `/api/products?q=${encodeURIComponent(q)}&page_size=10`,
-      )
-      setResults(data.items)
+      const images = await pickImages({ count: 1, source: 'both' })
+      const image = images[0]
+      if (!image) return
+      setUploadingPayPhoto(true)
+      const uploaded = await uploadLocalImage({ path: image.path, file: image.file }, 'misc')
+      setPayPhotoKey(uploaded.key)
     } catch (error) {
-      Taro.showToast({ title: (error as Error).message, icon: 'none' })
+      const message = (error as Error).message ?? ''
+      if (!message.includes('cancel')) Taro.showToast({ title: message || '上传失败', icon: 'none' })
+    } finally {
+      setUploadingPayPhoto(false)
     }
   }
-
-  const addGoodsItem = async (productId: number) => {
-    try {
-      const detail = await api.get<ProductDetail>(`/api/products/${productId}`)
-      const active = detail.skus.filter((sku) => sku.status === 'active')
-      if (!active.length) return
-      let sku = active[0]!
-      if (active.length > 1) {
-        const sheet = await Taro.showActionSheet({
-          itemList: active.map((item) => `${item.spec_name ?? '默认'} ${formatFen(item.latest_purchase_price)}`),
-        })
-        sku = active[sheet.tapIndex] ?? active[0]!
-      }
-      setGoodsItems((previous) => [
-        ...previous,
-        {
-          sku_id: sku.id,
-          productName: detail.product.name,
-          unit_name: sku.sale_unit,
-          conversion: '1',
-          qty: '1',
-          unit_price: sku.latest_purchase_price ? fenToYuan(sku.latest_purchase_price) : '',
-        },
-      ])
-      setResults([])
-      setKeyword('')
-    } catch (error) {
-      Taro.showToast({ title: (error as Error).message, icon: 'none' })
-    }
-  }
-
-  const updateGoodsItem = (index: number, patch: Partial<GoodsItem>) => {
-    setGoodsItems((previous) => {
-      const next = [...previous]
-      next[index] = { ...next[index]!, ...patch }
-      return next
-    })
-  }
-
-  const goodsTotal = goodsItems.reduce(
-    (sum, item) => sum + yuanToFen(item.unit_price) * (Number(item.qty) || 0),
-    0,
-  )
 
   const submitPayment = async () => {
-    const amountFen = method === 'goods' ? goodsTotal : yuanToFen(amount)
+    const amountFen = yuanToFen(amount)
     if (amountFen <= 0) {
       Taro.showToast({ title: method === 'other' ? '请输入抵扣金额' : '请输入回款金额', icon: 'none' })
-      return
-    }
-    if (method === 'goods' && !goodsItems.length) {
-      Taro.showToast({ title: '请添加抵扣商品', icon: 'none' })
       return
     }
     setBusy(true)
@@ -172,22 +115,13 @@ export default function OrderDetailPage() {
         method,
         amount: amountFen,
         note: (method === 'other' ? otherReason : note).trim() || null,
-        goods_items:
-          method === 'goods'
-            ? goodsItems.map((item) => ({
-                sku_id: item.sku_id,
-                unit_name: item.unit_name || '件',
-                conversion: Number(item.conversion) || 1,
-                qty: Number(item.qty) || 1,
-                unit_price: yuanToFen(item.unit_price),
-              }))
-            : undefined,
+        photo_key: payPhotoKey,
       })
       Taro.showToast({ title: '回款已记录', icon: 'success' })
       setShowPay(false)
-      setGoodsItems([])
       setNote('')
       setOtherReason('')
+      setPayPhotoKey(null)
       load()
     } catch (error) {
       Taro.showToast({ title: (error as Error).message, icon: 'none' })
@@ -203,6 +137,23 @@ export default function OrderDetailPage() {
       await api.post(`/api/orders/${id}/void`)
       Taro.showToast({ title: '已作废', icon: 'success' })
       load()
+    } catch (error) {
+      Taro.showToast({ title: (error as Error).message, icon: 'none' })
+    }
+  }
+
+  const purgeOrder = async () => {
+    const confirm = await Taro.showModal({
+      title: '彻底删除订单',
+      content:
+        '仅删除这张订单、其商品行与回款记录，商品档案与入库记录不受影响（商品抵扣衍生的入库单一并删除）。删除后不可恢复，确定吗？',
+      confirmColor: '#dc2626',
+    })
+    if (!confirm.confirm) return
+    try {
+      await api.delete(`/api/orders/${id}/purge`)
+      Taro.showToast({ title: '已彻底删除', icon: 'success' })
+      setTimeout(() => Taro.navigateBack(), 400)
     } catch (error) {
       Taro.showToast({ title: (error as Error).message, icon: 'none' })
     }
@@ -227,7 +178,7 @@ export default function OrderDetailPage() {
     )
   }
 
-  const methods: PayMethod[] = ['wechat', 'alipay', 'cash', 'goods', 'other']
+  const methods: PayMethod[] = ['wechat', 'alipay', 'cash', 'other']
 
   return (
     <View className="order-detail-page">
@@ -307,12 +258,25 @@ export default function OrderDetailPage() {
       <View className="card">
         {order.payments.map((payment) => (
           <View key={payment.id} className="payment-row">
-            <View>
-              <Text>{PAYMENT_METHOD_LABELS[payment.method]}</Text>
-              <Text className="muted">
-                {' '}
-                {formatDateTime(payment.received_at)} {payment.note ? `· ${payment.note}` : ''}
-              </Text>
+            <View className="payment-main">
+              <View>
+                <Text>{PAYMENT_METHOD_LABELS[payment.method]}</Text>
+                <Text className="muted">
+                  {' '}
+                  {formatDateTime(payment.received_at)} {payment.note ? `· ${payment.note}` : ''}
+                </Text>
+              </View>
+              {payment.photo_key ? (
+                <Image
+                  className="payment-photo"
+                  src={fileUrl(payment.photo_key)}
+                  mode="aspectFill"
+                  onClick={() => {
+                    const url = fileUrl(payment.photo_key)
+                    Taro.previewImage({ current: url, urls: [url] })
+                  }}
+                />
+              ) : null}
             </View>
             <Text className="price-text">{formatFen(payment.amount)}</Text>
           </View>
@@ -352,45 +316,6 @@ export default function OrderDetailPage() {
                 <Text className="muted">按抵扣金额计入已收款，原因记录到回款备注</Text>
               </View>
             </View>
-          ) : method === 'goods' ? (
-            <View>
-              <View className="search-row">
-                <Input
-                  className="input search-input"
-                  placeholder="搜索抵扣商品"
-                  value={keyword}
-                  confirmType="search"
-                  onInput={(event) => setKeyword(event.detail.value)}
-                  onConfirm={() => search()}
-                />
-              </View>
-              {results.map((product) => (
-                <View key={product.id} className="search-item" onClick={() => addGoodsItem(product.id)}>
-                  <Text>{product.name}</Text>
-                  <Text className="muted">{product.sku_count} 版本</Text>
-                </View>
-              ))}
-              {goodsItems.map((item, index) => (
-                <View key={index} className="goods-item">
-                  <View className="row-between">
-                    <Text>{item.productName}</Text>
-                    <Text className="danger-text" onClick={() => setGoodsItems((previous) => previous.filter((_, i) => i !== index))}>
-                      删除
-                    </Text>
-                  </View>
-                  <View className="field-row">
-                    <Input className="input quarter" type="digit" placeholder="数量" value={item.qty} onInput={(event) => updateGoodsItem(index, { qty: event.detail.value })} />
-                    <Input className="input quarter" placeholder="单位" value={item.unit_name} onInput={(event) => updateGoodsItem(index, { unit_name: event.detail.value })} />
-                    <Input className="input quarter" type="number" placeholder="换算" value={item.conversion} onInput={(event) => updateGoodsItem(index, { conversion: event.detail.value })} />
-                    <Input className="input quarter" type="digit" placeholder="单价" value={item.unit_price} onInput={(event) => updateGoodsItem(index, { unit_price: event.detail.value })} />
-                  </View>
-                </View>
-              ))}
-              <View className="row-between">
-                <Text className="muted">抵扣金额</Text>
-                <Text className="price-text">{formatFen(goodsTotal)}</Text>
-              </View>
-            </View>
           ) : (
             <View className="field">
               <Text className="field-label">回款金额（元）</Text>
@@ -404,6 +329,28 @@ export default function OrderDetailPage() {
               <Input className="input" placeholder="如 部分现金" value={note} onInput={(event) => setNote(event.detail.value)} />
             </View>
           )}
+
+          <View className="field">
+            <Text className="field-label">凭证照片（可选）</Text>
+            {payPhotoKey ? (
+              <View className="pay-photo-row">
+                <Image
+                  className="pay-photo-thumb"
+                  src={fileUrl(payPhotoKey)}
+                  mode="aspectFill"
+                  onClick={() => Taro.previewImage({ current: fileUrl(payPhotoKey), urls: [fileUrl(payPhotoKey)] })}
+                />
+                <Text className="danger-text" onClick={() => setPayPhotoKey(null)}>
+                  删除
+                </Text>
+              </View>
+            ) : (
+              <Button className="btn btn-ghost full-btn" loading={uploadingPayPhoto} onClick={addPayPhoto}>
+                拍照/上传凭证
+              </Button>
+            )}
+          </View>
+
           <View className="inline-actions">
             <Button className="btn btn-ghost" onClick={() => setShowPay(false)}>
               取消
@@ -414,12 +361,29 @@ export default function OrderDetailPage() {
           </View>
         </View>
       ) : order.status === 'open' ? (
+        order.remaining > 0 ? (
+          <View className="footer-bar">
+            <Button className="btn btn-ghost" onClick={voidOrder}>
+              作废
+            </Button>
+            <Button className="btn btn-danger" onClick={purgeOrder}>
+              彻底删除
+            </Button>
+            <Button className="btn btn-primary" onClick={() => setShowPay(true)}>
+              记回款
+            </Button>
+          </View>
+        ) : (
+          <View className="footer-bar">
+            <Button className="btn btn-danger" onClick={purgeOrder}>
+              彻底删除
+            </Button>
+          </View>
+        )
+      ) : order.status === 'void' ? (
         <View className="footer-bar">
-          <Button className="btn btn-danger" onClick={voidOrder}>
-            作废
-          </Button>
-          <Button className="btn btn-primary" onClick={() => setShowPay(true)}>
-            记回款
+          <Button className="btn btn-danger" onClick={purgeOrder}>
+            彻底删除
           </Button>
         </View>
       ) : null}

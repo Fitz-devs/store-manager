@@ -15,6 +15,7 @@ import type {
   StockStatus,
 } from '@sm/shared'
 import type { DB } from '../db/schema'
+import type { StorageAdapter } from '../adapters/storage'
 import { batchCompiled } from '../db/batch'
 import { nowIso } from '../lib/ids'
 import { ApiError } from '../lib/errors'
@@ -508,6 +509,7 @@ export interface OcrFromRowInput {
 export async function createProductsFromOcrRow(
   db: Kysely<DB>,
   d1: D1Database,
+  storage: StorageAdapter,
   input: OcrFromRowInput,
   operatorId: number,
 ): Promise<OcrFromRowResult> {
@@ -574,8 +576,8 @@ export async function createProductsFromOcrRow(
         operatorId,
       )
     } catch (error) {
-      // 回滚已建箱装，避免半截数据（无外键，purge 显式清理子数据）
-      await purgeProduct(db, d1, boxDetail.product.id).catch(() => undefined)
+      // 回滚已建箱装，避免半截数据（无外键，purge 显式清理子数据与图片）
+      await purgeProduct(db, d1, boxDetail.product.id, storage).catch(() => undefined)
       throw error
     }
     const unitSku = unitDetail.skus[0]
@@ -846,10 +848,23 @@ async function buildProductTreeDeletion(db: Kysely<DB>, id: number): Promise<Com
   ]
 }
 
-export async function purgeProduct(db: Kysely<DB>, d1: D1Database, id: number): Promise<void> {
-  const product = await db.selectFrom('products').select('id').where('id', '=', id).executeTakeFirst()
+export async function purgeProduct(
+  db: Kysely<DB>,
+  d1: D1Database,
+  id: number,
+  storage: StorageAdapter,
+): Promise<void> {
+  const product = await db
+    .selectFrom('products')
+    .select(['id', 'image_key'])
+    .where('id', '=', id)
+    .executeTakeFirst()
   if (!product) throw new ApiError(404, 'PRODUCT_NOT_FOUND', '商品不存在')
   await batchCompiled(d1, await buildProductTreeDeletion(db, id))
+  // 库数据删除成功后清理 R2 商品图；失败仅留孤儿文件，不影响删除结果
+  if (product.image_key) {
+    await storage.delete(product.image_key).catch(() => undefined)
+  }
 }
 
 export async function addBarcode(

@@ -4,7 +4,6 @@ import type { DatabaseBundle } from './db'
 export interface Bindings {
   DB: D1Database
   BUCKET: R2Bucket
-  AI: Ai
   ASSETS?: Fetcher
   JWT_SECRET: string
   WX_APPID?: string
@@ -15,14 +14,12 @@ export interface Bindings {
   ALI_MARKET_APPCODE?: string
   APIZERO_KEY?: string
   BARCODESPIDER_TOKEN?: string
-  OCR_MODEL?: string
   OCR_MOCK?: string
   /** 智谱 API Key（glm-ocr） */
   ZHIPU_API_KEY?: string
   ZHIPU_OCR_MODEL?: string
   ZHIPU_BASE_URL?: string
   ZHIPU_API_KEY_STORE?: { get: () => Promise<string> }
-  ENVIRONMENT?: string
 }
 
 export interface Variables {

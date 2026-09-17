@@ -10,6 +10,7 @@ import {
   skuInputSchema,
 } from '@sm/shared'
 import type { AppEnv } from '../env'
+import { createStorage } from '../adapters/storage'
 import { ApiError, ok, parseBody, parseQuery } from '../lib/errors'
 import {
   addBarcode,
@@ -60,7 +61,7 @@ router.post('/', async (c) => {
 router.post('/from-ocr-row', async (c) => {
   const input = await parseBody(c, ocrFromRowSchema)
   const { db, d1 } = c.get('database')
-  const result = await createProductsFromOcrRow(db, d1, input, c.get('user').id)
+  const result = await createProductsFromOcrRow(db, d1, createStorage(c.env.BUCKET), input, c.get('user').id)
   return ok(c, result, 201)
 })
 
@@ -88,7 +89,8 @@ router.delete('/:id', async (c) => {
 
 router.delete('/:id/purge', async (c) => {
   const id = idSchema.parse(c.req.param('id'))
-  await purgeProduct(c.get('database').db, c.get('database').d1, id)
+  const { db, d1 } = c.get('database')
+  await purgeProduct(db, d1, id, createStorage(c.env.BUCKET))
   return ok(c, { purged: true })
 })
 

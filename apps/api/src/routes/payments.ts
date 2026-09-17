@@ -8,8 +8,7 @@ const router = new Hono<AppEnv>()
 
 router.post('/', async (c) => {
   const input = await parseBody(c, paymentCreateSchema)
-  const { db, d1 } = c.get('database')
-  const result = await addPayment(d1, db, input, c.get('user').id)
+  const result = await addPayment(c.get('database').db, input, c.get('user').id)
   return ok(c, result, 201)
 })
 

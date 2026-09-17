@@ -1,23 +1,6 @@
 import type { OcrDraft, OcrDraftRow, OcrHeader, OcrRow } from '@sm/shared'
-import { ApiError } from '../lib/errors'
 
-export interface OcrResult {
-  rows: OcrRow[]
-  draft: OcrDraft
-  model: string
-  raw: string
-}
-
-export interface AiAdapter {
-  recognizePurchaseReceipt(
-    image: ArrayBuffer,
-    contentType: string,
-    meta?: { image_key?: string; page_index?: number },
-  ): Promise<OcrResult>
-}
-
-const DEFAULT_MODELS = ['@cf/google/gemma-4-26b-a4b-it', '@cf/moondream/moondream3.1-9B-A2B']
-
+/** 收货单识别提示词（智谱 glm-ocr 与历史 Workers AI 共用） */
 export const PURCHASE_OCR_PROMPT = [
   '你是中文进货/销售单识别助手。识别图片，只输出 JSON，禁止 markdown 代码块或解释。',
   '重要：单据抬头的公司名是**供货商**（我们要的），不是客户；「客户名称」是我们收货方自己的名字，不要填进 supplier。',
@@ -25,16 +8,6 @@ export const PURCHASE_OCR_PROMPT = [
   '{"header":{"supplier_name":"供货商公司名或null","supplier_phone":"供货商电话或null","order_no":"单据编号或null","date":"送货日期 YYYY-MM-DD 或 null","customer_name":"收货方名称或null","customer_phone":null,"salesman":null,"driver":null,"note":null,"total_raw":"合计原文字或null"},"rows":[{"seq":序号或null,"box_code":"条码/整箱码或null","unit_code":"单件码或null","name":"商品名称原文","spec_hint":"如1*16或250ml*12或null","conversion":16,"qty_raw":"数量原文如30件","qty":30,"unit":"件","unit_price_raw":"单价原文","unit_price":42.00,"amount_raw":"金额原文","amount":1260.00,"remark":null}]}',
   '要求：件数/数量列的数字必须进 qty，单位进 unit；规格 1*16 的 N 进 conversion；金额与单价保留原字符串并给出数字；不要把单位换算掉；无法识别填 null。',
 ].join('\n')
-
-function toBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer)
-  let binary = ''
-  const chunk = 0x8000
-  for (let i = 0; i < bytes.length; i += chunk) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + chunk))
-  }
-  return btoa(binary)
-}
 
 export function extractJsonPayload(text: string): Record<string, unknown> | null {
   const cleaned = text.replace(/```json/gi, '```').replace(/```/g, '')
@@ -56,7 +29,6 @@ function toNumber(value: unknown): number | null {
   }
   return null
 }
-
 function asString(value: unknown): string | null {
   if (typeof value !== 'string') return null
   const trimmed = value.trim()
@@ -168,49 +140,4 @@ export function draftToLegacyRows(draft: OcrDraft): OcrRow[] {
     unit_price: row.unit_price_fen === null ? null : row.unit_price_fen / 100,
     amount: row.amount_fen === null ? null : row.amount_fen / 100,
   }))
-}
-
-export function createAi(ai: Ai, preferredModel?: string): AiAdapter {
-  const models = preferredModel ? [preferredModel, ...DEFAULT_MODELS] : DEFAULT_MODELS
-  return {
-    async recognizePurchaseReceipt(image, contentType, meta) {
-      const imageKey = meta?.image_key ?? 'unknown'
-      const pageIndex = meta?.page_index ?? 0
-      const dataUrl = `data:${contentType};base64,${toBase64(image)}`
-      let lastError: unknown = null
-      for (const model of models) {
-        try {
-          const result = (await (ai as unknown as {
-            run: (model: string, input: unknown) => Promise<unknown>
-          }).run(model, {
-            messages: [
-              {
-                role: 'user',
-                content: [
-                  { type: 'text', text: PURCHASE_OCR_PROMPT },
-                  { type: 'image_url', image_url: { url: dataUrl } },
-                ],
-              },
-            ],
-          })) as { response?: string }
-          const raw = typeof result?.response === 'string' ? result.response : ''
-          const parsed = extractJsonPayload(raw)
-          if (parsed && (Array.isArray(parsed.rows) || Array.isArray(parsed.items))) {
-            const draft = buildOcrDraft(parsed, {
-              image_key: imageKey,
-              page_index: pageIndex,
-              model,
-              raw,
-            })
-            return { rows: draftToLegacyRows(draft), draft, model, raw }
-          }
-          lastError = new Error(`模型 ${model} 返回内容无法解析`)
-        } catch (error) {
-          lastError = error
-        }
-      }
-      const message = lastError instanceof Error ? lastError.message : '未知错误'
-      throw new ApiError(502, 'OCR_FAILED', `识别失败：${message}`)
-    },
-  }
 }

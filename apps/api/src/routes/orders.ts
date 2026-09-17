@@ -2,8 +2,9 @@ import { Hono } from 'hono'
 import { z } from 'zod'
 import { orderCreateSchema, orderDeliverSchema } from '@sm/shared'
 import type { AppEnv } from '../env'
+import { createStorage } from '../adapters/storage'
 import { ApiError, ok, parseBody, parseQuery } from '../lib/errors'
-import { createOrder, deliverOrder, getOrder, listOrders, voidOrder } from '../services/orders'
+import { createOrder, deliverOrder, getOrder, listOrders, purgeOrder, voidOrder } from '../services/orders'
 
 const router = new Hono<AppEnv>()
 
@@ -57,6 +58,13 @@ router.post('/:id/void', async (c) => {
   const id = idSchema.parse(c.req.param('id'))
   const order = await voidOrder(c.get('database').db, id)
   return ok(c, order)
+})
+
+router.delete('/:id/purge', async (c) => {
+  const id = idSchema.parse(c.req.param('id'))
+  const { db, d1 } = c.get('database')
+  await purgeOrder(db, d1, id, createStorage(c.env.BUCKET))
+  return ok(c, { purged: true })
 })
 
 export default router

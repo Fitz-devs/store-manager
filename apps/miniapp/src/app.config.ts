@@ -17,6 +17,7 @@ const config = {
     'pages/customers/index',
     'pages/categories/index',
     'pages/order-detail/index',
+    'pages/users/index',
   ],
   window: {
     backgroundTextStyle: 'light',

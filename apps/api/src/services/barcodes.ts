@@ -1,10 +1,9 @@
 import type { Kysely } from 'kysely'
 import type { BarcodeCacheEntry, BarcodeLookupResult } from '@sm/shared'
 import type { DB } from '../db/schema'
-import type { StorageAdapter } from '../adapters/storage'
 import { getProductDetail } from './products'
 import { fetchTaobaoBarcode } from './taobao'
-import { nowIso, shanghaiDateString, uuid } from '../lib/ids'
+import { nowIso } from '../lib/ids'
 
 interface EnrichResult {
   entry: BarcodeCacheEntry
@@ -29,52 +28,6 @@ export interface EnrichOptions {
 
 const UA = 'store-manager/0.1 (self-hosted retail tool)'
 
-const EXTENSIONS: Record<string, string> = {
-  'image/webp': 'webp',
-  'image/png': 'png',
-  'image/gif': 'gif',
-  'image/jpeg': 'jpg',
-  'image/jpg': 'jpg',
-}
-
-export async function mirrorExternalImage(
-  storage: StorageAdapter,
-  imageUrl: string,
-): Promise<string | null> {
-  const readImage = async (response: Response): Promise<{ buffer: ArrayBuffer; contentType: string; extension: string } | null> => {
-    if (!response.ok) return null
-    const contentType = (response.headers.get('content-type') ?? '').split(';')[0]!.trim().toLowerCase()
-    const extension = EXTENSIONS[contentType]
-    if (!extension) return null
-    const buffer = await response.arrayBuffer()
-    if (buffer.byteLength === 0 || buffer.byteLength > 6 * 1024 * 1024) return null
-    return { buffer, contentType, extension }
-  }
-
-  try {
-    let image: { buffer: ArrayBuffer; contentType: string; extension: string } | null = null
-    try {
-      const optimized = await fetch(imageUrl, {
-        cf: { image: { format: 'webp', quality: 82 } },
-        signal: AbortSignal.timeout(8000),
-      } as RequestInit)
-      image = await readImage(optimized)
-    } catch {
-      image = null
-    }
-    if (!image) {
-      const original = await fetch(imageUrl, { signal: AbortSignal.timeout(8000) })
-      image = await readImage(original)
-    }
-    if (!image) return null
-    const key = `products/${shanghaiDateString().slice(0, 7)}/${uuid()}.${image.extension}`
-    await storage.put(key, image.buffer, image.contentType)
-    return key
-  } catch {
-    return null
-  }
-}
-
 async function fetchTaobao(code: string, options: EnrichOptions): Promise<EnrichResult | null> {
   if (!options.taobaoAppKey || !options.taobaoAppSecret) return null
   try {
@@ -87,8 +40,6 @@ async function fetchTaobao(code: string, options: EnrichOptions): Promise<Enrich
         name: result.title,
         brand: result.brand,
         spec: result.spec,
-        image_url: result.picUrl,
-        image_key: null,
         source: 'taobao',
         fetched_at: nowIso(),
       },
@@ -128,8 +79,6 @@ async function fetchOpenFoodFacts(code: string): Promise<EnrichResult | null> {
         name,
         brand: product.brands ?? null,
         spec: product.quantity ?? null,
-        image_url: product.image_front_url ?? null,
-        image_key: null,
         source: 'openfoodfacts',
         fetched_at: nowIso(),
       },
@@ -161,8 +110,6 @@ async function fetchUpcItemDb(code: string): Promise<EnrichResult | null> {
         name: item.title,
         brand: item.brand ?? null,
         spec: item.model ?? null,
-        image_url: item.images?.[0] ?? null,
-        image_key: null,
         source: 'upcitemdb',
         fetched_at: nowIso(),
       },
@@ -202,8 +149,6 @@ async function fetchOpenProductsFacts(code: string): Promise<EnrichResult | null
         name,
         brand: product.brands ?? null,
         spec: product.quantity ?? null,
-        image_url: product.image_front_url ?? null,
-        image_key: null,
         source: 'openproductsfacts',
         fetched_at: nowIso(),
       },
@@ -291,8 +236,6 @@ async function fetchAliMarket(code: string, options: EnrichOptions): Promise<Enr
         name: parsed.name,
         brand: parsed.brand,
         spec: parsed.spec,
-        image_url: parsed.imageUrl,
-        image_key: null,
         source: 'alimarket',
         fetched_at: nowIso(),
       },
@@ -342,8 +285,6 @@ async function fetchApiZero(code: string, apiKey?: string): Promise<EnrichResult
         name: parsed.name,
         brand: parsed.brand,
         spec: parsed.spec,
-        image_url: null,
-        image_key: null,
         source: 'apizero',
         fetched_at: nowIso(),
       },
@@ -382,8 +323,6 @@ async function fetchBarcodeSpider(code: string, token?: string): Promise<EnrichR
         name: item.title.trim(),
         brand: item.brand ?? item.manufacturer ?? null,
         spec: null,
-        image_url: item.images?.[0] ?? null,
-        image_key: null,
         source: 'barcodespider',
         fetched_at: nowIso(),
       },
@@ -395,7 +334,6 @@ async function fetchBarcodeSpider(code: string, token?: string): Promise<EnrichR
 
 export async function enrichBarcode(
   code: string,
-  storage: StorageAdapter,
   options: EnrichOptions = {},
 ): Promise<EnrichResult | null> {
   const isChineseCode = code.startsWith('69') || code.startsWith('069')
@@ -408,10 +346,6 @@ export async function enrichBarcode(
     (await fetchUpcItemDb(code)) ??
     (isChineseCode ? null : await fetchApiZero(code, options.apiZeroKey)) ??
     (await fetchBarcodeSpider(code, options.barcodeSpiderToken))
-  if (!result) return null
-  if (result.entry.image_url) {
-    result.entry.image_key = await mirrorExternalImage(storage, result.entry.image_url)
-  }
   return result
 }
 
@@ -427,8 +361,6 @@ export async function upsertBarcodeCache(
         name: entry.name,
         brand: entry.brand,
         spec: entry.spec,
-        image_url: entry.image_url,
-        image_key: entry.image_key,
         source: entry.source,
         fetched_at: entry.fetched_at,
       }),
@@ -439,7 +371,6 @@ export async function upsertBarcodeCache(
 export async function lookupBarcode(
   db: Kysely<DB>,
   code: string,
-  storage: StorageAdapter,
   options: EnrichOptions = {},
 ): Promise<BarcodeLookupResult> {
   const matches = await db
@@ -470,19 +401,13 @@ export async function lookupBarcode(
       name: cached.name,
       brand: cached.brand,
       spec: cached.spec,
-      image_url: cached.image_url,
-      image_key: cached.image_key,
       source: cached.source,
       fetched_at: cached.fetched_at,
-    }
-    if (!entry.image_key && entry.image_url) {
-      entry.image_key = await mirrorExternalImage(storage, entry.image_url)
-      if (entry.image_key) await upsertBarcodeCache(db, entry)
     }
     return { source: 'cache', cache: entry }
   }
 
-  const enriched = await enrichBarcode(code, storage, options)
+  const enriched = await enrichBarcode(code, options)
   if (enriched) {
     await upsertBarcodeCache(db, enriched.entry)
     return { source: enriched.source, cache: enriched.entry }

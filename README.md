@@ -6,9 +6,9 @@
 
 - **商品管理**：扫码录入、拍照/条码补全、多 SKU（同码不同版本）、多优惠、整箱↔单件关联商品、规格归档、缺货标记、商品图片、价格历史与趋势、入库记录、彻底删除
 - **入库**：供货商/日期/清单、入库价与上次不同时提示是否同步零售价、拍照 OCR 识别收货单（原图对照、人工校对后入库）
-- **开单**：扫码/搜索加购、客户选择、送货上门（地址/时间）、现结或赊账、多次回款（微信/支付宝/现金/商品抵扣/其他抵扣）、商品抵扣自动重新入库
+- **开单**：扫码/搜索加购、客户选择、送货上门（地址/时间）、现结或赊账、多笔组合收款（微信/支付宝/现金/其他抵扣，各笔可传凭证照片）、余款可继续回款
 - **送货**：拍照自动打时间 + 地址 + GPS + 送货人水印
-- **客户与欠款**：按客户查看未结订单与回款记录
+- **客户与欠款**：按客户查看未结订单与回款记录；回款支持凭证照片与备注
 - **账号**：老板/店员账号密码登录、微信一键登录（需配置）、老板可管理店员
 - **数据**：首页统计、一键导出 JSON、每日自动备份到 R2
 
@@ -26,7 +26,7 @@
 Cloudflare Worker（Hono + Kysely）
    ├── D1        业务数据（SQLite，免费 5GB）
    ├── R2        图片/单据/水印照（免费 10GB，出口免费）
-   ├── Workers AI  收货单 OCR（免费 10k neurons/天）
+   ├── OCR      智谱 glm-ocr（ZHIPU_API_KEY；本地可用 OCR_MOCK=1 走假数据）
    ├── Static Assets  Web 版（Taro H5 构建产物）
    └── Cron      每日导出备份到 R2
 ```
@@ -65,7 +65,7 @@ bun run dev:weapp                     # 生成 dist/，微信开发者工具导�
 TARO_APP_API=http://192.168.x.x:8787
 ```
 
-本地测试 OCR 需要 Workers AI，用已登录的 Cloudflare 账号跑 `bun run dev:remote`（会使用 `wrangler.toml` 的 AI binding）。
+本地测试 OCR：`wrangler.dev.toml` 已开 `OCR_MOCK=1`，识别走本地假数据，不依赖外部服务；真实识别需配置 `ZHIPU_API_KEY`。
 
 ## 部署
 
@@ -94,8 +94,11 @@ bunx wrangler secret put APIZERO_KEY
 bunx wrangler secret put ALI_MARKET_BARCODE_URL
 bunx wrangler secret put ALI_MARKET_APPCODE
 bunx wrangler secret put BARCODESPIDER_TOKEN
-# 可选：覆盖 OCR 模型
-bunx wrangler secret put OCR_MODEL
+# 必需：收货单 OCR（智谱 glm-ocr，https://open.bigmodel.cn 注册拿 key）
+bunx wrangler secret put ZHIPU_API_KEY
+# 可选：覆盖 OCR 模型/接口地址
+bunx wrangler secret put ZHIPU_OCR_MODEL
+bunx wrangler secret put ZHIPU_BASE_URL
 
 bun run migrate:remote
 bun run deploy          # 会先构建 Web 版再部署（deploy:api-only 可跳过 Web 构建）
@@ -132,13 +135,13 @@ Worker 绑定一个自定义域名（例如 `origin.example.com`），供 ESA �
 ### 4. 上线检查
 
 - 首页统计、扫码、开单、回款、送货拍照逐项真机验证
-- Workers AI 免费额度：控制台查看 neurons 使用量；超出可换更小模型或升级 Workers Paid（$5/月）
+- 智谱 OCR 用量：按智谱开放平台控制台查看；超出免费额度按其定价付费
 - 备份：每天自动写入 R2 `backups/`；D1 自带 Time Travel（30 天内任意时间点恢复）
 
 ## 常见问题
 
-- **本地 `wrangler dev` 报 AI binding 错误**：本地默认配置 `wrangler.dev.toml` 不含 AI；需要 OCR 时用 `bun run dev:remote`（需 `wrangler login`）
-- **微信内 iOS 摄像头/扫码**：微信小程序原生能力不受浏览器限制；若后续增加 H5 版，iOS 需用 ZXing-WASM 方案
+- **本地 OCR 假数据**：`wrangler.dev.toml` 配了 `OCR_MOCK=1`，本地识别返回固定的假收货单，便于联调完整流程
+- **微信内 iOS 摄像头/扫码**：微信小程序原生能力不受浏览器限制；H5 端已用 ZXing-WASM 方案
 - **条码补全查不到**：查询链为 淘宝（需企业认证）→ 阿里云云市场条码API（个人可）→ **极数本源免费版（无需 key 每天 20 次，登录后额度更高，国内商品覆盖 >95%）** → Open Food Facts → Open Products Facts → UPCitemdb → Barcode Spider，都查不到时手动录入即可；查到的结果会缓存到本地条码库，全店复用
 - **OCR 识别不准**：识别结果提供了原图对照与可编辑表格，人工校对后入库；纯手工录入入口始终可用
 - **地理水印没有坐标**：需先在小程序后台开通地理位置接口；未开通时水印仅显示时间与订单地址
@@ -147,13 +150,14 @@ Worker 绑定一个自定义域名（例如 `origin.example.com`），供 ESA �
 
 | 项目 | 费用 |
 |---|---|
-| Cloudflare Workers / D1 / R2 / Workers AI | 免费额度内 ¥0 |
+| Cloudflare Workers / D1 / R2 | 免费额度内 ¥0 |
+| 智谱 glm-ocr | 免费额度内 ¥0，超出按智谱定价 |
 | 域名 | 约 ¥30–70/年 |
 | 阿里云轻量（备案服务码） | 约 ¥100/年 |
-| 阿里云 ESA 免费版 | ¥0 |
+| 阿里云 ESA 免费版 | ¥0（可选） |
 
 ## 技术取舍
 
-- 未引入 UI 组件库，使用 Taro 原生组件 + 少量样式，降低包体积和维护成本
+- UI 组件以 Taro 原生 + 自有样式为主；NutUI 仅用 Tag（status-tag），空态图等均为自绘，不依赖第三方默认插图
 - 小程序端仅复用 `@sm/shared` 的 TypeScript 类型；少量格式化工具在小程序内重复实现，避免跨包构建配置
 - 后端数据库访问统一走 `DatabaseBundle`（Kysely + D1），文件访问走 `StorageAdapter`，OCR 走 `AiAdapter`，未来迁移平台只需替换适配层

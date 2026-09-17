@@ -2,12 +2,14 @@ import { Hono } from 'hono'
 import { z } from 'zod'
 import { checkPricesSchema, purchaseCreateSchema } from '@sm/shared'
 import type { AppEnv } from '../env'
+import { createStorage } from '../adapters/storage'
 import { ApiError, ok, parseBody, parseQuery } from '../lib/errors'
 import {
   checkPurchasePrices,
   createPurchase,
   getPurchase,
   listPurchases,
+  purgePurchase,
 } from '../services/purchases'
 
 const router = new Hono<AppEnv>()
@@ -44,10 +46,17 @@ router.post('/', async (c) => {
   const input = await parseBody(c, purchaseCreateSchema)
   const { db, d1 } = c.get('database')
   const purchase = await createPurchase(d1, db, input, {
-    applyPurchasePrice: true,
     operatorId: c.get('user').id,
   })
   return ok(c, purchase, 201)
+})
+
+router.delete('/:id/purge', async (c) => {
+  const id = Number(c.req.param('id'))
+  if (!Number.isFinite(id) || id <= 0) throw new ApiError(400, 'VALIDATION', '参数错误')
+  const { db, d1 } = c.get('database')
+  await purgePurchase(db, d1, id, createStorage(c.env.BUCKET))
+  return ok(c, { purged: true })
 })
 
 export default router

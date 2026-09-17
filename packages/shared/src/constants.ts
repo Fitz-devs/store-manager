@@ -1,8 +1,17 @@
 export const PRICE_TYPES = ['purchase', 'retail', 'friend'] as const
 export type PriceType = (typeof PRICE_TYPES)[number]
 
-export const PAYMENT_METHODS = ['cash', 'wechat', 'alipay', 'goods', 'other'] as const
+export const PAYMENT_METHODS = ['cash', 'wechat', 'alipay', 'other'] as const
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number]
+
+/** 历史数据仍存在 goods（换货抵扣）回款，展示时需要标签 */
+export const PAYMENT_METHOD_LABELS: Record<PaymentMethod | 'goods', string> = {
+  cash: '现金',
+  wechat: '微信',
+  alipay: '支付宝',
+  other: '其他',
+  goods: '商品抵扣（已停用）',
+}
 
 export const BARCODE_TYPES = ['single', 'box'] as const
 export type BarcodeType = (typeof BARCODE_TYPES)[number]
@@ -21,14 +30,6 @@ export type PurchaseKind = (typeof PURCHASE_KINDS)[number]
 
 export const USER_ROLES = ['owner', 'staff'] as const
 export type UserRole = (typeof USER_ROLES)[number]
-
-export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
-  cash: '现金',
-  wechat: '微信',
-  alipay: '支付宝',
-  goods: '商品抵扣',
-  other: '其他',
-}
 
 export const PRICE_TYPE_LABELS: Record<PriceType, string> = {
   purchase: '入库价',

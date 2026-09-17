@@ -9,8 +9,10 @@ import type {
 } from '@sm/shared'
 import { calcAmount, normalizeUnitPrice, priceChangeRatio } from '@sm/shared'
 import type { DB } from '../db/schema'
+import type { StorageAdapter } from '../adapters/storage'
 import { batchCompiled } from '../db/batch'
 import { ApiError } from '../lib/errors'
+import { parseStoredImageKeys } from '../lib/images'
 import { nextPurchaseNo, nowIso } from '../lib/ids'
 
 export interface CheckPriceItem {
@@ -77,7 +79,6 @@ export async function checkPurchasePrices(
 }
 
 export interface CreatePurchaseOptions {
-  applyPurchasePrice: boolean
   operatorId: number
 }
 
@@ -107,7 +108,7 @@ export async function createPurchase(
     .values({
       purchase_no: purchaseNo,
       supplier_name: input.supplier_name ?? null,
-      kind: options.applyPurchasePrice ? 'purchase' : 'goods_offset',
+      kind: 'purchase',
       total_amount: totalAmount,
       note: input.note ?? null,
       image_keys: input.image_keys?.length ? JSON.stringify(input.image_keys) : null,
@@ -273,4 +274,27 @@ export async function listPurchases(
   }))
 
   return { items, total, page: params.page, page_size: params.page_size }
+}
+
+export async function purgePurchase(
+  db: Kysely<DB>,
+  d1: D1Database,
+  id: number,
+  storage: StorageAdapter,
+): Promise<void> {
+  const purchase = await db
+    .selectFrom('purchases')
+    .select(['id', 'image_keys'])
+    .where('id', '=', id)
+    .executeTakeFirst()
+  if (!purchase) throw new ApiError(404, 'PURCHASE_NOT_FOUND', '入库单不存在')
+  // 因商品抵扣产生的回款记录保留，仅解除与该入库单的关联
+  await batchCompiled(d1, [
+    db.updateTable('payments').set({ purchase_id: null }).where('purchase_id', '=', id).compile(),
+    db.deleteFrom('purchase_items').where('purchase_id', '=', id).compile(),
+    db.deleteFrom('purchases').where('id', '=', id).compile(),
+  ])
+  for (const key of parseStoredImageKeys(purchase.image_keys)) {
+    await storage.delete(key).catch(() => undefined)
+  }
 }

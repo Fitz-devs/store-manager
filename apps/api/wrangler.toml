@@ -28,9 +28,6 @@ directory = "../miniapp/dist-h5"
 binding = "ASSETS"
 run_worker_first = true
 
-[ai]
-binding = "AI"
-
 # 硅基流动：账号级 Secrets Store（secret_name=siliconflow-key）绑定到 Worker。
 # 需在 dashboard 复制 store_id 后取消注释并 deploy。
 # 也可用常规 secret 兜底：bunx wrangler secret put SILICONFLOW_KEY

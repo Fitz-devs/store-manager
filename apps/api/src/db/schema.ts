@@ -180,6 +180,7 @@ export interface PaymentsTable {
   method: string
   amount: number
   purchase_id: number | null
+  photo_key: string | null
   note: string | null
   operator_id: number | null
   received_at: string
@@ -191,8 +192,6 @@ export interface BarcodeCacheTable {
   name: string | null
   brand: string | null
   spec: string | null
-  image_url: string | null
-  image_key: string | null
   source: string | null
   fetched_at: string | null
 }

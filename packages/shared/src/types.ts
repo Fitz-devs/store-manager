@@ -225,6 +225,7 @@ export interface Payment {
   method: PaymentMethod
   amount: number
   purchase_id: number | null
+  photo_key: string | null
   note: string | null
   operator_id: number | null
   operator_name?: string | null
@@ -268,8 +269,6 @@ export interface BarcodeCacheEntry {
   name: string | null
   brand: string | null
   spec: string | null
-  image_url: string | null
-  image_key: string | null
   source: string | null
   fetched_at: string | null
 }

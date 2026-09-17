@@ -36,6 +36,23 @@ export default function PurchaseDetail() {
     load()
   })
 
+  const purge = async () => {
+    const confirm = await Taro.showModal({
+      title: '彻底删除入库单',
+      content:
+        '仅删除这张入库单及其商品行（品种/数量/价格），商品档案、订单与回款记录均不受影响。删除后不可恢复，确定吗？',
+      confirmColor: '#dc2626',
+    })
+    if (!confirm.confirm) return
+    try {
+      await api.delete(`/api/purchases/${id}/purge`)
+      Taro.showToast({ title: '已彻底删除', icon: 'success' })
+      setTimeout(() => Taro.navigateBack(), 400)
+    } catch (error) {
+      Taro.showToast({ title: (error as Error).message, icon: 'none' })
+    }
+  }
+
   if (!purchase) {
     if (loadError) {
       return (
@@ -126,6 +143,13 @@ export default function PurchaseDetail() {
           </View>
         </>
       )}
+
+      <View className="footer-bar">
+        <Button className="btn btn-danger" onClick={purge}>
+          彻底删除
+        </Button>
+      </View>
+      <View style={{ height: '120px' }} />
     </View>
   )
 }

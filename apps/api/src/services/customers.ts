@@ -285,6 +285,7 @@ export async function getCustomerDetail(db: Kysely<DB>, id: number): Promise<Cus
         method: payment.method as Payment['method'],
         amount: payment.amount,
         purchase_id: payment.purchase_id,
+        photo_key: payment.photo_key,
         note: payment.note,
         operator_id: payment.operator_id,
         operator_name: payment.operator_name,

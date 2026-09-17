@@ -14,6 +14,7 @@ import { PH } from '../../config/placeholders'
 import { DateTimeField } from '../../components/datetime-field'
 import { Stepper } from '../../components/stepper'
 import { useAuthGuard } from '../../utils/auth'
+import { pickImages, uploadLocalImage } from '../../utils/media'
 import { TAB_PAGE_FOOTER_STYLE } from '../../utils/env'
 import { scanBarcode } from '../../utils/scan'
 import { setPendingOrdersFilter } from '../../utils/orderFilter'
@@ -30,24 +31,45 @@ interface CartItem {
   price: number
 }
 
-interface GoodsItem {
-  sku_id: number
-  productName: string
-  unit_name: string
-  conversion: string
-  qty: string
-  unit_price: string
-}
-
-type PayMethod = 'cash' | 'wechat' | 'alipay' | 'goods' | 'other'
+type PayMethod = 'cash' | 'wechat' | 'alipay' | 'other'
 
 const PAY_METHODS: Array<{ value: PayMethod; label: string }> = [
   { value: 'cash', label: '现金' },
   { value: 'wechat', label: '微信' },
   { value: 'alipay', label: '支付宝' },
-  { value: 'goods', label: '换货' },
   { value: 'other', label: '其他' },
 ]
+
+const METHOD_LABELS: Record<PayMethod, string> = Object.fromEntries(
+  PAY_METHODS.map((method) => [method.value, method.label]),
+) as Record<PayMethod, string>
+
+interface PaymentEntry {
+  id: string
+  method: PayMethod
+  /** 元字符串草稿，现金/微信/支付宝/其他用 */
+  amount: string
+  /** 是否手动改过金额（首笔自动填合计用） */
+  edited: boolean
+  /** 其他-抵扣原因 */
+  reason: string
+  note: string
+  /** 凭证照片 key */
+  photoKey: string
+}
+
+let entrySeq = 0
+const newPaymentEntry = (method: PayMethod = 'cash'): PaymentEntry => ({
+  id: `pe_${Date.now()}_${entrySeq++}`,
+  method,
+  amount: '',
+  edited: false,
+  reason: '',
+  note: '',
+  photoKey: '',
+})
+
+const entryAmount = (entry: PaymentEntry): number => yuanToFen(entry.amount)
 
 export default function OrderNew() {
   useAuthGuard()
@@ -73,15 +95,8 @@ export default function OrderNew() {
   const [saveAddress, setSaveAddress] = useState(true)
 
   const [paid, setPaid] = useState(true)
-  const [payMethod, setPayMethod] = useState<PayMethod>('cash')
-  const [payAmount, setPayAmount] = useState('')
-  const [payAmountEdited, setPayAmountEdited] = useState(false)
-  const [payNote, setPayNote] = useState('')
-  const [otherReason, setOtherReason] = useState('')
-  const [otherAmount, setOtherAmount] = useState('')
-  const [goodsItems, setGoodsItems] = useState<GoodsItem[]>([])
-  const [goodsKeyword, setGoodsKeyword] = useState('')
-  const [goodsResults, setGoodsResults] = useState<ProductListItem[]>([])
+  const [entries, setEntries] = useState<PaymentEntry[]>(() => [newPaymentEntry()])
+  const [expandedId, setExpandedId] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [step, setStep] = useState(1)
 
@@ -138,13 +153,39 @@ export default function OrderNew() {
   const total = useMemo(() => cart.reduce((sum, item) => sum + item.price * item.qty, 0), [cart])
 
   useEffect(() => {
-    if (!payAmountEdited) setPayAmount(fenToYuan(total))
-  }, [total, payAmountEdited])
+    setEntries((previous) => {
+      if (previous.length !== 1) return previous
+      const [first] = previous
+      if (!first || first.edited) return previous
+      const nextAmount = fenToYuan(total)
+      return first.amount === nextAmount ? previous : [{ ...first, amount: nextAmount }]
+    })
+  }, [total])
 
-  const goodsTotal = useMemo(
-    () => goodsItems.reduce((sum, item) => sum + yuanToFen(item.unit_price) * (Number(item.qty) || 0), 0),
-    [goodsItems],
+  const paidTotal = useMemo(
+    () => entries.reduce((sum, entry) => sum + entryAmount(entry), 0),
+    [entries],
   )
+
+  const expanded = entries.find((entry) => entry.id === expandedId) ?? entries[0]
+
+  const updateEntry = (id: string, patch: Partial<PaymentEntry>) => {
+    setEntries((previous) => previous.map((entry) => (entry.id === id ? { ...entry, ...patch } : entry)))
+  }
+
+  const addEntry = () => {
+    const entry = newPaymentEntry()
+    setEntries((previous) => [...previous, entry])
+    setExpandedId(entry.id)
+  }
+
+  const removeEntry = (id: string) => {
+    setEntries((previous) => {
+      const next = previous.filter((entry) => entry.id !== id)
+      return next.length ? next : [newPaymentEntry()]
+    })
+    setExpandedId('')
+  }
 
   const doSearch = async (value?: string) => {
     const q = (value ?? keyword).trim()
@@ -353,59 +394,22 @@ export default function OrderNew() {
     setPhone(item.phone || customer?.phone || '')
   }
 
-  const searchGoods = async (value?: string) => {
-    const q = (value ?? goodsKeyword).trim()
-    if (!q) {
-      setGoodsResults([])
-      return
-    }
+  const pickPaymentPhoto = async (entryId: string) => {
     try {
-      const data = await api.get<{ items: ProductListItem[] }>(
-        `/api/products?q=${encodeURIComponent(q)}&page_size=10`,
-      )
-      setGoodsResults(data.items)
+      const images = await pickImages({ count: 1, source: 'both' })
+      const image = images[0]
+      if (!image) return
+      Taro.showLoading({ title: '上传中' })
+      const uploaded = await uploadLocalImage(image, 'payments')
+      Taro.hideLoading()
+      updateEntry(entryId, { photoKey: uploaded.key })
     } catch (error) {
-      Taro.showToast({ title: (error as Error).message, icon: 'none' })
-    }
-  }
-
-  const addGoodsItem = async (productId: number) => {
-    try {
-      const detail = await api.get<ProductDetail>(`/api/products/${productId}`)
-      const active = detail.skus.filter((sku) => sku.status === 'active')
-      if (!active.length) return
-      let sku = active[0]!
-      if (active.length > 1) {
-        const sheet = await Taro.showActionSheet({
-          itemList: active.map((item) => `${item.spec_name ?? '默认'} ${formatFen(item.latest_purchase_price)}`),
-        })
-        sku = active[sheet.tapIndex] ?? active[0]!
+      Taro.hideLoading()
+      const message = (error as Error).message ?? ''
+      if (!message.includes('cancel')) {
+        Taro.showToast({ title: message || '上传失败', icon: 'none' })
       }
-      const referencePrice = sku.latest_purchase_price ?? sku.retail_price
-      setGoodsItems((previous) => [
-        ...previous,
-        {
-          sku_id: sku.id,
-          productName: detail.product.name,
-          unit_name: sku.sale_unit,
-          conversion: '1',
-          qty: '1',
-          unit_price: fenToYuan(referencePrice),
-        },
-      ])
-      setGoodsResults([])
-      setGoodsKeyword('')
-    } catch (error) {
-      Taro.showToast({ title: (error as Error).message, icon: 'none' })
     }
-  }
-
-  const updateGoodsItem = (index: number, patch: Partial<GoodsItem>) => {
-    setGoodsItems((previous) => {
-      const next = [...previous]
-      next[index] = { ...next[index]!, ...patch }
-      return next
-    })
   }
 
   const submit = async () => {
@@ -418,24 +422,23 @@ export default function OrderNew() {
       Taro.showToast({ title: '请填写送货地址', icon: 'none' })
       return
     }
-    if (paid && payMethod === 'goods' && !goodsItems.length) {
-      Taro.showToast({ title: '请录入换货商品', icon: 'none' })
-      return
-    }
-    const finalAmount = paid
-      ? payMethod === 'goods'
-        ? goodsTotal
-        : payMethod === 'other'
-          ? yuanToFen(otherAmount)
-          : yuanToFen(payAmount)
-      : 0
-    if (paid && finalAmount <= 0) {
-      Taro.showToast({ title: payMethod === 'other' ? '请输入抵扣金额' : '请输入收款金额', icon: 'none' })
-      return
-    }
-    if (paid && finalAmount > total) {
-      Taro.showToast({ title: '收款金额不能大于订单金额', icon: 'none' })
-      return
+    if (paid) {
+      for (let index = 0; index < entries.length; index += 1) {
+        const entry = entries[index]!
+        const label = METHOD_LABELS[entry.method]
+        if (yuanToFen(entry.amount) <= 0) {
+          Taro.showToast({ title: `第${index + 1}笔（${label}）请输入金额`, icon: 'none' })
+          return
+        }
+      }
+      if (paidTotal <= 0) {
+        Taro.showToast({ title: '请输入收款金额', icon: 'none' })
+        return
+      }
+      if (paidTotal > total) {
+        Taro.showToast({ title: '收款金额不能大于订单金额', icon: 'none' })
+        return
+      }
     }
     setSubmitting(true)
     try {
@@ -458,23 +461,13 @@ export default function OrderNew() {
           unit_price: item.price,
           promotion_text: null,
         })),
-        payment: paid
-          ? payMethod === 'goods'
-            ? {
-                method: 'goods',
-                amount: goodsTotal,
-                note: payNote.trim() || null,
-                goods_items: goodsItems.map((item) => ({
-                  sku_id: item.sku_id,
-                  unit_name: item.unit_name || '件',
-                  conversion: Number(item.conversion) || 1,
-                  qty: Number(item.qty) || 1,
-                  unit_price: yuanToFen(item.unit_price),
-                })),
-              }
-            : payMethod === 'other'
-              ? { method: 'other', amount: finalAmount, note: otherReason.trim() || null }
-              : { method: payMethod, amount: finalAmount, note: payNote.trim() || null }
+        payments: paid
+          ? entries.map((entry) => ({
+              method: entry.method,
+              amount: entryAmount(entry),
+              note: (entry.method === 'other' ? entry.reason : entry.note).trim() || null,
+              photo_key: entry.photoKey || null,
+            }))
           : undefined,
       })
 
@@ -506,11 +499,8 @@ export default function OrderNew() {
       setPhone('')
       setDeliveryDate(todayString())
       setDeliveryTime(new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(11, 16))
-      setGoodsItems([])
-      setPayAmountEdited(false)
-      setPayNote('')
-      setOtherReason('')
-      setOtherAmount('')
+      setEntries([newPaymentEntry()])
+      setExpandedId('')
       setStep(1)
       loadReport()
       setTimeout(() => {
@@ -787,113 +777,138 @@ export default function OrderNew() {
 
         {paid && (
           <View>
-            <View className="pay-methods">
-              {PAY_METHODS.map((method) => (
-                <View
-                  key={method.value}
-                  className={`pay-method ${payMethod === method.value ? 'pay-method-active' : ''}`}
-                  onClick={() => setPayMethod(method.value)}
-                >
-                  {method.label}
-                </View>
-              ))}
-            </View>
+            {entries.map((entry, index) => {
+              const open = expanded?.id === entry.id
+              return (
+                <View key={entry.id} className="pay-entry">
+                  <View className="pay-entry-head" onClick={() => setExpandedId(entry.id)}>
+                    <Text className="pay-entry-title">
+                      第 {index + 1} 笔 · {METHOD_LABELS[entry.method]}
+                    </Text>
+                    <View className="pay-entry-side">
+                      <Text className="price-text">{formatFen(entryAmount(entry))}</Text>
+                      {entries.length > 1 && (
+                        <Text
+                          className="danger-text"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            removeEntry(entry.id)
+                          }}
+                        >
+                          删除
+                        </Text>
+                      )}
+                    </View>
+                  </View>
 
-            {payMethod === 'goods' ? (
-              <View className="goods-editor">
-                <Text className="muted">以货换货（行家换货）：录入用于抵扣货款的商品</Text>
-                <View className="search-row">
-                  <Input
-                    className="input search-input"
-                    placeholder="搜索换货商品"
-                    value={goodsKeyword}
-                    confirmType="search"
-                    onInput={(event) => setGoodsKeyword(event.detail.value)}
-                    onConfirm={() => searchGoods()}
-                  />
-                  <Button className="btn btn-ghost scan-btn" onClick={() => searchGoods()}>
-                    搜索
-                  </Button>
-                </View>
-                {goodsResults.map((product) => (
-                  <View key={product.id} className="search-item" onClick={() => addGoodsItem(product.id)}>
-                    <Text>{product.name}</Text>
-                    <Text className="muted">{product.sku_count} 版本</Text>
-                  </View>
-                ))}
-                {goodsItems.map((item, index) => (
-                  <View key={index} className="goods-item">
-                    <View className="row-between">
-                      <Text>{item.productName}</Text>
-                      <Text
-                        className="danger-text"
-                        onClick={() => setGoodsItems((previous) => previous.filter((_, i) => i !== index))}
-                      >
-                        删除
-                      </Text>
+                  {open && (
+                    <View className="pay-entry-body">
+                      <View className="pay-methods">
+                        {PAY_METHODS.map((method) => (
+                          <View
+                            key={method.value}
+                            className={`pay-method ${entry.method === method.value ? 'pay-method-active' : ''}`}
+                            onClick={() => updateEntry(entry.id, { method: method.value })}
+                          >
+                            {method.label}
+                          </View>
+                        ))}
+                      </View>
+
+                      {entry.method === 'other' ? (
+                        <View>
+                          <View className="field">
+                            <Text className="field-label">抵扣原因</Text>
+                            <Input
+                              className="input"
+                              placeholder={PH.otherReason}
+                              value={entry.reason}
+                              onInput={(event) => updateEntry(entry.id, { reason: event.detail.value })}
+                            />
+                          </View>
+                          <View className="field">
+                            <Text className="field-label">抵扣金额（元）</Text>
+                            <Input
+                              className="input"
+                              type="digit"
+                              value={entry.amount}
+                              onInput={(event) => updateEntry(entry.id, { amount: event.detail.value, edited: true })}
+                            />
+                            <Text className="muted">按抵扣金额计入已收款</Text>
+                          </View>
+                        </View>
+                      ) : (
+                        <View className="field">
+                          <Text className="field-label">收款金额（元）</Text>
+                          <Input
+                            className="input"
+                            type="digit"
+                            value={entry.amount}
+                            onInput={(event) => updateEntry(entry.id, { amount: event.detail.value, edited: true })}
+                          />
+                        </View>
+                      )}
+
+                      <View className="field">
+                        <Text className="field-label">凭证照片</Text>
+                        {entry.photoKey ? (
+                          <View className="pay-photo-row">
+                            <Image
+                              className="pay-photo-thumb"
+                              src={fileUrl(entry.photoKey)}
+                              mode="aspectFill"
+                              onClick={() =>
+                                Taro.previewImage({
+                                  current: fileUrl(entry.photoKey),
+                                  urls: [fileUrl(entry.photoKey)],
+                                })
+                              }
+                            />
+                            <Text
+                              className="danger-text"
+                              onClick={() => updateEntry(entry.id, { photoKey: '' })}
+                            >
+                              删除
+                            </Text>
+                          </View>
+                        ) : (
+                          <Button
+                            className="btn btn-ghost pay-photo-btn"
+                            onClick={() => pickPaymentPhoto(entry.id)}
+                          >
+                            上传凭证照片
+                          </Button>
+                        )}
+                      </View>
+
+                      {entry.method !== 'other' && (
+                        <View className="field">
+                          <Text className="field-label">备注</Text>
+                          <Input
+                            className="input"
+                            placeholder={PH.paymentNote}
+                            value={entry.note}
+                            onInput={(event) => updateEntry(entry.id, { note: event.detail.value })}
+                          />
+                        </View>
+                      )}
                     </View>
-                    <View className="field-row">
-                      <Input className="input quarter" type="digit" placeholder="数量" value={item.qty} onInput={(event) => updateGoodsItem(index, { qty: event.detail.value })} />
-                      <Input className="input quarter" placeholder="单位" value={item.unit_name} onInput={(event) => updateGoodsItem(index, { unit_name: event.detail.value })} />
-                      <Input className="input quarter" type="number" placeholder="换算" value={item.conversion} onInput={(event) => updateGoodsItem(index, { conversion: event.detail.value })} />
-                      <Input className="input quarter" type="digit" placeholder="单价" value={item.unit_price} onInput={(event) => updateGoodsItem(index, { unit_price: event.detail.value })} />
-                    </View>
-                  </View>
-                ))}
-                <View className="row-between goods-total">
-                  <Text className="muted">换货金额</Text>
-                  <Text className="price-text">{formatFen(goodsTotal)}</Text>
+                  )}
                 </View>
-              </View>
-            ) : payMethod === 'other' ? (
-              <View>
-                <View className="field">
-                  <Text className="field-label">抵扣原因</Text>
-                  <Input
-                    className="input"
-                    placeholder={PH.otherReason}
-                    value={otherReason}
-                    onInput={(event) => setOtherReason(event.detail.value)}
-                  />
-                </View>
-                <View className="field">
-                  <Text className="field-label">抵扣金额（元）</Text>
-                  <Input
-                    className="input"
-                    type="digit"
-                    value={otherAmount}
-                    onInput={(event) => setOtherAmount(event.detail.value)}
-                  />
-                  <Text className="muted">按抵扣金额计入已收款，余款可在订单详情继续回款</Text>
-                </View>
-              </View>
-            ) : (
-              <View className="field">
-                <Text className="field-label">本次收款金额（元）</Text>
-                <Input
-                  className="input"
-                  type="digit"
-                  value={payAmount}
-                  onInput={(event) => {
-                    setPayAmountEdited(true)
-                    setPayAmount(event.detail.value)
-                  }}
-                />
-                <Text className="muted">
-                  可分多次收款，余款在订单详情里继续记录
-                </Text>
-              </View>
-            )}
-            {payMethod !== 'other' && (
-              <View className="field">
-                <Text className="field-label">备注</Text>
-                <Input
-                  className="input"
-                  placeholder="如需记录请填写"
-                  value={payNote}
-                  onInput={(event) => setPayNote(event.detail.value)}
-                />
-              </View>
+              )
+            })}
+
+            <Button className="btn btn-ghost pay-add-btn" onClick={addEntry}>
+              ＋ 添加一笔付款
+            </Button>
+            <View className="row-between pay-sum-row">
+              <Text className="muted">已收合计 / 订单合计</Text>
+              <Text className="price-text">
+                {formatFen(paidTotal)} / {formatFen(total)}
+              </Text>
+            </View>
+            {paidTotal < total && (
+              <Text className="muted">余款 {formatFen(total - paidTotal)} 可在订单详情继续回款</Text>
             )}
           </View>
         )}
