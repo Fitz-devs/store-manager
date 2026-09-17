@@ -389,6 +389,13 @@ taro-input-core.input {
 }
 
 .sm-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: fit-content;
+  max-width: 100%;
+  flex: 0 0 auto;
   flex-shrink: 0;
   padding: 14px 28px;
   border-radius: 999px;
@@ -400,6 +407,22 @@ taro-input-core.input {
   box-shadow: 0 1px 2px rgba(17, 24, 39, 0.04), 0 4px 12px rgba(17, 24, 39, 0.04);
   box-shadow: var(--sm-shadow-card);
   transition: transform 160ms ease-out;
+}
+
+/* H5 taro-view-core / weapp view 默认 width:100% 会把 chip 拉满行宽 */
+.filter-scroll .sm-chip,
+.sm-chips .sm-chip,
+.filter-scroll > taro-view-core,
+.sm-chips > taro-view-core,
+.filter-scroll > view,
+.sm-chips > view {
+  width: fit-content !important;
+  max-width: 100%;
+  flex: 0 0 auto !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
 }
 
 .sm-chip:active {

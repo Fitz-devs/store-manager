@@ -1,0 +1,95 @@
+.list-time-filter {
+  display: block;
+  width: 100%;
+}
+
+.list-time-filter-chips {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 16px 20px 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+}
+
+.list-time-filter-chip {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: fit-content;
+  max-width: 100%;
+  flex: 0 0 auto !important;
+  flex-shrink: 0;
+  align-self: center;
+  padding: 14px 28px;
+  border-radius: 999px;
+  border-radius: var(--sm-radius-pill, 999px);
+  background: #ffffff;
+  background: var(--sm-surface, #ffffff);
+  color: #6b7280;
+  color: var(--sm-ink-2, #6b7280);
+  font-size: 26px;
+  line-height: 1.2;
+  box-shadow: 0 1px 2px rgba(17, 24, 39, 0.04), 0 4px 12px rgba(17, 24, 39, 0.04);
+  box-shadow: var(--sm-shadow-card, 0 1px 2px rgba(17, 24, 39, 0.04), 0 4px 12px rgba(17, 24, 39, 0.04));
+  transition: transform 160ms ease-out;
+}
+
+.list-time-filter-chip:active {
+  transform: scale(0.95);
+}
+
+.list-time-filter-chip-active {
+  background: #eff6ff;
+  background: var(--sm-primary-soft, #eff6ff);
+  color: #2563eb;
+  color: var(--sm-primary, #2563eb);
+  font-weight: 600;
+}
+
+.list-time-filter-chip-text {
+  flex-shrink: 0;
+  font-size: 26px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.list-time-filter-range {
+  flex-shrink: 0;
+  margin-left: auto;
+  font-size: 24px;
+}
+
+/* 压住 H5 taro-view-core / weapp view 的默认全宽 */
+.list-time-filter-chips > taro-view-core,
+.list-time-filter-chips > view,
+.list-time-filter-chip,
+.list-time-filter-chip > taro-view-core,
+.list-time-filter-chip > view,
+.list-time-filter-chip > taro-text-core,
+.list-time-filter-chip > text {
+  width: fit-content !important;
+  max-width: 100%;
+  flex: 0 0 auto !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+.list-time-filter-panel {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0 20px 16px;
+}

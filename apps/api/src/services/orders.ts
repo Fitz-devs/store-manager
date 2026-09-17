@@ -13,6 +13,7 @@ import type { StorageAdapter } from '../adapters/storage'
 import { batchCompiled } from '../db/batch'
 import { ApiError } from '../lib/errors'
 import { nextOrderNo, nextPaymentNo, nowIso } from '../lib/ids'
+import { applyOrderListFilters } from '../lib/list-filters'
 import { loadSkuMeta } from './purchases'
 
 export async function createOrder(
@@ -292,24 +293,7 @@ export async function listOrders(
   db: Kysely<DB>,
   params: ListOrdersParams,
 ): Promise<Paginated<Order>> {
-  const base = () => {
-    let query = db.selectFrom('orders')
-    if (params.q) {
-      const keyword = `%${params.q}%`
-      query = query.where((eb) =>
-        eb.or([eb('orders.order_no', 'like', keyword), eb('orders.customer_name', 'like', keyword)]),
-      )
-    }
-    if (params.status) query = query.where('orders.status', '=', params.status)
-    if (params.delivery_status) query = query.where('orders.delivery_status', '=', params.delivery_status)
-    if (params.customer_id) query = query.where('orders.customer_id', '=', params.customer_id)
-    if (params.from) query = query.where('orders.created_at', '>=', params.from)
-    if (params.to) query = query.where('orders.created_at', '<=', params.to)
-    if (params.only_unpaid) {
-      query = query.where('orders.status', '=', 'open').whereRef('orders.paid_amount', '<', 'orders.total')
-    }
-    return query
-  }
+  const base = () => applyOrderListFilters(db.selectFrom('orders'), params)
 
   const totalRow = await base()
     .select((eb) => eb.fn.count('orders.id').as('count'))

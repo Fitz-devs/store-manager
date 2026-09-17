@@ -1,11 +1,12 @@
 import { useRef, useState } from 'react'
 import Taro, { useDidShow, usePullDownRefresh, useReachBottom } from '@tarojs/taro'
-import { Button, Text, View } from '@tarojs/components'
+import { Text, View } from '@tarojs/components'
 import type { Purchase } from '@sm/shared'
 import { api } from '../../api/client'
 import ScanFab from '../../components/scan-fab'
 import { EmptyState } from '../../components/empty-state'
 import { ListLoading } from '../../components/list-loading'
+import { ListTimeFilter } from '../../components/list-time-filter'
 import { SearchBox } from '../../components/search-box'
 import { useAuthGuard } from '../../utils/auth'
 import { formatFen } from '../../utils/format'
@@ -15,6 +16,10 @@ export default function Purchases() {
   useAuthGuard()
   const [keyword, setKeyword] = useState('')
   const keywordRef = useRef('')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+  const dateFromRef = useRef('')
+  const dateToRef = useRef('')
   const [items, setItems] = useState<Purchase[]>([])
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
@@ -29,6 +34,8 @@ export default function Purchases() {
       const query = new URLSearchParams()
       const q = keywordRef.current.trim()
       if (q) query.set('q', q)
+      if (dateFromRef.current) query.set('from', dateFromRef.current)
+      if (dateToRef.current) query.set('to', dateToRef.current)
       query.set('page', String(nextPage))
       query.set('page_size', '20')
       const data = await api.get<{ items: Purchase[]; total: number }>(`/api/purchases?${query.toString()}`)
@@ -60,6 +67,14 @@ export default function Purchases() {
     setKeyword(value)
   }
 
+  const onDateRangeChange = (from: string, to: string) => {
+    dateFromRef.current = from
+    dateToRef.current = to
+    setDateFrom(from)
+    setDateTo(to)
+    load(1)
+  }
+
   return (
     <View className="purchases-page">
       <View className="list-header">
@@ -68,7 +83,7 @@ export default function Purchases() {
             value={keyword}
             onChange={onKeywordChange}
             onSearch={() => load(1)}
-            placeholder="搜索入库单号 / 供应商"
+            placeholder="搜索入库单号 / 供应商 / 商品名"
           />
           <View
             className="sm-new-btn"
@@ -77,6 +92,7 @@ export default function Purchases() {
             <Text>＋入库</Text>
           </View>
         </View>
+        <ListTimeFilter from={dateFrom} to={dateTo} onChange={onDateRangeChange} />
       </View>
 
       {items.map((purchase) => (
@@ -102,7 +118,7 @@ export default function Purchases() {
       {!loading && !items.length && (
         <EmptyState
           title="暂无入库记录"
-          sub="进货后记一笔，方便对账与比价"
+          sub="进货后记一笔，方便对账与比价；可按商品名或时间筛选"
           actions={[
             {
               label: '去入库',

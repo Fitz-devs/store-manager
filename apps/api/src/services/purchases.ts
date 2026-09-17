@@ -14,6 +14,7 @@ import { batchCompiled } from '../db/batch'
 import { ApiError } from '../lib/errors'
 import { parseStoredImageKeys } from '../lib/images'
 import { nextPurchaseNo, nowIso } from '../lib/ids'
+import { applyPurchaseListFilters } from '../lib/list-filters'
 
 export interface CheckPriceItem {
   sku_id: number
@@ -226,21 +227,7 @@ export async function listPurchases(
   db: Kysely<DB>,
   params: ListPurchasesParams,
 ): Promise<Paginated<Purchase>> {
-  const base = () => {
-    let query = db.selectFrom('purchases')
-    if (params.q) {
-      const keyword = `%${params.q}%`
-      query = query.where((eb) =>
-        eb.or([
-          eb('purchases.purchase_no', 'like', keyword),
-          eb('purchases.supplier_name', 'like', keyword),
-        ]),
-      )
-    }
-    if (params.from) query = query.where('purchases.ordered_at', '>=', params.from)
-    if (params.to) query = query.where('purchases.ordered_at', '<=', params.to)
-    return query
-  }
+  const base = () => applyPurchaseListFilters(db.selectFrom('purchases'), params)
 
   const totalRow = await base()
     .select((eb) => eb.fn.count('purchases.id').as('count'))

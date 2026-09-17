@@ -5,6 +5,7 @@ import type { Order } from '@sm/shared'
 import { api } from '../../api/client'
 import { EmptyState } from '../../components/empty-state'
 import { ListLoading } from '../../components/list-loading'
+import { ListTimeFilter } from '../../components/list-time-filter'
 import { SearchBox } from '../../components/search-box'
 import { useAuthGuard } from '../../utils/auth'
 import { consumePendingOrdersFilter } from '../../utils/orderFilter'
@@ -21,6 +22,10 @@ export default function Orders() {
   const filterRef = useRef<Filter>(initial)
   const [keyword, setKeyword] = useState('')
   const keywordRef = useRef('')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+  const dateFromRef = useRef('')
+  const dateToRef = useRef('')
   const [items, setItems] = useState<Order[]>([])
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
@@ -37,6 +42,8 @@ export default function Orders() {
       if (q) query.set('q', q)
       if (nextFilter === 'unpaid') query.set('only_unpaid', '1')
       if (nextFilter === 'pending') query.set('delivery_status', 'pending')
+      if (dateFromRef.current) query.set('from', dateFromRef.current)
+      if (dateToRef.current) query.set('to', dateToRef.current)
       query.set('page', String(nextPage))
       query.set('page_size', '20')
       const data = await api.get<{ items: Order[]; total: number }>(`/api/orders?${query.toString()}`)
@@ -81,6 +88,14 @@ export default function Orders() {
     setKeyword(value)
   }
 
+  const onDateRangeChange = (from: string, to: string) => {
+    dateFromRef.current = from
+    dateToRef.current = to
+    setDateFrom(from)
+    setDateTo(to)
+    load(1, filterRef.current)
+  }
+
   const filters: Array<{ value: Filter; label: string }> = [
     { value: 'all', label: '全部' },
     { value: 'unpaid', label: '待收款' },
@@ -95,7 +110,7 @@ export default function Orders() {
             value={keyword}
             onChange={onKeywordChange}
             onSearch={() => load(1, filterRef.current)}
-            placeholder="搜索单号 / 客户"
+            placeholder="搜索单号 / 客户 / 地址 / 电话"
           />
         </View>
         <View className="sm-chips">
@@ -110,6 +125,7 @@ export default function Orders() {
           ))}
           <Text className="muted sm-chip-total">共 {total} 单</Text>
         </View>
+        <ListTimeFilter from={dateFrom} to={dateTo} onChange={onDateRangeChange} />
       </View>
 
       {items.map((order) => (
@@ -147,7 +163,7 @@ export default function Orders() {
       {!loading && !items.length && (
         <EmptyState
           title="暂无订单"
-          sub="开单后会出现在这里，可按待收款/待送货筛选"
+          sub="开单后会出现在这里，可按待收款/待送货或时间筛选"
           actions={[
             {
               label: '去开单',
