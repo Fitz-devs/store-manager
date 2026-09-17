@@ -73,7 +73,7 @@
 | # | 需求 | 状态 |
 |---|---|---|
 | 5.1 | 账号密码登录（首次初始化老板账号，无内置默认密码） | ✅ |
-| 5.2 | 微信一键登录（wx.login → openid 绑定已有账号） | 🟡 代码就绪，待配置 WX_APPID / WX_SECRET |
+| 5.2 | 微信一键登录（wx.login → openid 绑定已有账号） | ✅ Worker secrets 已配置；待真机绑定实测 |
 | 5.3 | 用户管理（仅老板）：新增账号（老板/店员）、重置密码、停用/启用、**删除账号**（物理删除，历史单据保留、经办人显示"-"） | ✅ |
 | 5.4 | 首页统计：今日销售、待收款、待送货、缺货数 | ✅ |
 | 5.5 | 数据导出（当前 JSON） | ✅ |
@@ -215,7 +215,7 @@ packages/shared   前后端共享类型 + zod schema + 常量
 | 回源源站 | `origin.160847.xyz`（ESA 回源用） |
 | 域名注册 | 阿里云（NS 已在 Cloudflare） |
 | 线上地址 | https://wj.160847.xyz（Web 版可直接访问） |
-| 微信小程序 | 未配置 AppID（project.config.json 目前是 touristappid） |
+| 微信小程序 AppID | `wxfba378cc2a6f590a`（已写入 project.config.json；WX_APPID/WX_SECRET 已配为 Worker secrets） |
 
 常用命令：
 
@@ -240,8 +240,8 @@ cd apps/api && bun run deploy            # 构建 H5 + 部署 Worker
 ## 七、待完善事项（建议接手后按优先级处理）
 
 1. **微信小程序提审的域名备案**（Web 版已可直接访问；小程序 request/uploadFile 合法域名要求备案，`160847.xyz` 备案后再提审；ESA 接入为可选加速）
-2. **微信小程序上线配置**：AppID、服务器域名（https://wj.160847.xyz）、隐私协议、地理位置接口申请、提审
-3. **微信登录**：配置 `WX_APPID` / `WX_SECRET` 两个 Worker secret 并实测绑定流程
+2. **微信小程序上线配置**：AppID 已填；仍需服务器域名（https://wj.160847.xyz）、隐私协议、地理位置接口申请、提审。完整步骤见 `docs/wechat-miniprogram-setup.md`
+3. **微信登录**：`WX_APPID` / `WX_SECRET` 已配置（线上 `wx_login_enabled: true`）；待真机走一遍绑定流程
 4. **条码补全数据源**：
    - **极数本源（推荐先配，免费）**：https://apizero.cn/account/keys 注册拿 Key → `wrangler secret put APIZERO_KEY`（不配也能用，匿名 20 次/天；配了 200 次，QPS 2）
    - 阿里云云市场（个人可，国内覆盖最好、含图片数据集）：搜索"商品条码查询"，选带免费试用的供应商 → `ALI_MARKET_BARCODE_URL` / `ALI_MARKET_APPCODE`

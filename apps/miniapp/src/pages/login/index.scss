@@ -46,18 +46,34 @@
   border-radius: 24px;
   padding: 40px 32px;
   box-shadow: 0 8px 32px rgba(17, 24, 39, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
-.login-btn {
-  margin-top: 12px;
-  width: 100%;
+/* H5 上 Taro Button 外壳可能仍是 inline-flex，导致按钮挤成一行 */
+.login-btn,
+taro-button-core.login-btn,
+.login-btn .weui-btn,
+.login-btn button,
+.login-btn taro-view-core {
+  display: flex !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box;
+  margin-top: 0;
+  margin-left: 0;
+  margin-right: 0;
+  min-height: 80px;
+  align-items: center;
+  justify-content: center;
   text-align: center;
 }
 
 .login-hint {
   display: block;
   text-align: center;
-  margin-top: 24px;
+  margin-top: 8px;
   color: var(--sm-primary);
   font-size: 26px;
   padding: 8px;

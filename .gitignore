@@ -10,4 +10,5 @@ build/
 coverage/
 apps/miniapp/.temp/
 apps/miniapp/.swc/
+apps/miniapp/.env.development
 .idea

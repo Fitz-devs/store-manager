@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import Taro from '@tarojs/taro'
 import { Button, Input, Text, View } from '@tarojs/components'
 import { api, setToken, setUser } from '../../api/client'
+import { IS_WEAPP } from '../../utils/env'
 import './index.scss'
 
 interface AuthResponse {
@@ -197,7 +198,7 @@ export default function Login() {
           {bindToken ? '绑定并登录' : mode === 'setup' ? '创建并进入' : '登录'}
         </Button>
 
-        {wxEnabled && !bindToken && (
+        {IS_WEAPP && wxEnabled && !bindToken && (
           <Button className="btn btn-ghost login-btn" onClick={wxLogin}>
             微信一键登录
           </Button>

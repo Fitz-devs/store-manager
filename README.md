@@ -43,27 +43,25 @@ packages/shared  前后端共用类型与校验（zod）
 
 ## 本地开发
 
-要求：Bun 1.3+、微信开发者工具。
+要求：Bun 1.3+、[微信开发者工具](https://developers.weixin.qq.com/miniprogram/dev/devtools/download.html)（注意是开发者工具，不是普通微信客户端）。
+
+完整清单见 [docs/wechat-miniprogram-setup.md](docs/wechat-miniprogram-setup.md)。
 
 ```bash
 bun install
 
 # 后端
 cd apps/api
-cp .dev.vars.example .dev.vars        # 或手动创建，内容 JWT_SECRET=xxx
 bun run migrate:local                 # 初始化本地 D1
 bun run dev                           # http://127.0.0.1:8787（本地模式，不含 AI binding）
 
 # 小程序（另开终端）
 cd apps/miniapp
-bun run dev:weapp                     # 生成 dist/，微信开发者工具导入本目录
+cp .env.development.example .env.development   # 真机调试改局域网 IP
+bun run dev:weapp                     # 生成 dist/，微信开发者工具导入 apps/miniapp
 ```
 
-首次启动小程序会引导创建老板账号。微信开发者工具需在「详情 → 本地设置」勾选“不校验合法域名”。真机预览时后端地址不能用 127.0.0.1，在 `apps/miniapp` 下建 `.env.development`：
-
-```
-TARO_APP_API=http://192.168.x.x:8787
-```
+首次启动小程序会引导创建老板账号。微信开发者工具需在「详情 → 本地设置」勾选“不校验合法域名”。真机预览时后端地址不能用 127.0.0.1，`.env.development` 填电脑局域网 IP（`ipconfig getifaddr en0`）后重新构建。
 
 本地测试 OCR：`wrangler.dev.toml` 已开 `OCR_MOCK=1`，识别走本地假数据，不依赖外部服务；真实识别需配置 `ZHIPU_API_KEY`。
 
@@ -122,6 +120,8 @@ Worker 绑定一个自定义域名（例如 `origin.example.com`），供 ESA �
 5. 缓存规则：`/files/*` 缓存（图片），`/api/*` 不缓存（动态接口）
 
 ### 3. 微信小程序
+
+逐步清单见 [docs/wechat-miniprogram-setup.md](docs/wechat-miniprogram-setup.md)。
 
 1. 微信公众平台创建小程序，拿到 AppID，填入 `apps/miniapp/project.config.json`
 2. 「开发管理 → 服务器域名」把 `https://wj.160847.xyz` 加入 request/uploadFile/downloadFile 合法域名

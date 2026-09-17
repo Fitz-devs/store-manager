@@ -282,15 +282,30 @@ taro-button-core.full-btn,
   min-height: 80px;
 }
 
-.input {
+.input,
+taro-input-core.input {
+  display: block;
   background: #f9fafb;
   border-radius: 12px;
   border-radius: var(--sm-radius-ctl);
-  padding: 16px 20px;
+  padding: 24px;
   font-size: 28px;
   width: 100%;
   box-sizing: border-box;
   color: var(--sm-ink);
+  /* weapp 上 taro-input-core 不会因 padding 撑高，必须给 min-height（设计稿 px=rpx） */
+  min-height: 88px;
+  line-height: 40px;
+}
+
+.input .weui-input,
+.input input {
+  width: 100%;
+  height: 40px;
+  min-height: 40px;
+  line-height: 40px;
+  font-size: 28px;
+  background: transparent;
 }
 
 .field {
@@ -660,6 +675,15 @@ taro-input-core .weui-input {
   padding: 8px 12px;
   font-size: 26px;
   color: var(--sm-primary);
+}
+
+.btn-primary.sm-action,
+.btn-primary .sm-action {
+  color: #fff;
+}
+
+.btn-danger.sm-action {
+  color: var(--sm-danger);
 }
 
 .sm-action-danger {

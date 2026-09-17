@@ -2,7 +2,7 @@
   "miniprogramRoot": "dist/",
   "projectname": "store-manager",
   "description": "店铺管理系统",
-  "appid": "touristappid",
+  "appid": "wxfba378cc2a6f590a",
   "setting": {
     "urlCheck": false,
     "es6": true,

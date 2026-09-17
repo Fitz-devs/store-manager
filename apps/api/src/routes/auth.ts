@@ -180,6 +180,67 @@ router.post('/wx-bind', async (c) => {
   return ok(c, { token, user: publicUser({ ...user, wechat_openid: payload.openid }) })
 })
 
+/** 已登录用户：用微信 code 把当前账号绑定到该微信 */
+router.post('/wx-bind-current', async (c) => {
+  if (!c.env.WX_APPID || !c.env.WX_SECRET) {
+    throw new ApiError(400, 'WX_DISABLED', '尚未配置微信登录')
+  }
+  const { db } = c.get('database')
+  const current = c.get('user')
+  const { code } = await parseBody(c, wxLoginSchema)
+  const url =
+    'https://api.weixin.qq.com/sns/jscode2session' +
+    `?appid=${encodeURIComponent(c.env.WX_APPID)}` +
+    `&secret=${encodeURIComponent(c.env.WX_SECRET)}` +
+    `&js_code=${encodeURIComponent(code)}` +
+    '&grant_type=authorization_code'
+  let data: { openid?: string; errcode?: number; errmsg?: string }
+  try {
+    const response = await fetch(url, { signal: AbortSignal.timeout(8000) })
+    data = (await response.json()) as typeof data
+  } catch {
+    throw new ApiError(502, 'WX_ERROR', '微信服务暂时不可用')
+  }
+  if (!data.openid) {
+    throw new ApiError(401, 'WX_LOGIN_FAILED', data.errmsg ?? '微信登录失败')
+  }
+  const conflict = await db
+    .selectFrom('users')
+    .select('id')
+    .where('wechat_openid', '=', data.openid)
+    .where('id', '!=', current.id)
+    .executeTakeFirst()
+  if (conflict) throw new ApiError(400, 'WX_BOUND', '该微信已绑定其他账号')
+  await db
+    .updateTable('users')
+    .set({ wechat_openid: data.openid, updated_at: nowIso() })
+    .where('id', '=', current.id)
+    .execute()
+  const row = await db
+    .selectFrom('users')
+    .selectAll()
+    .where('id', '=', current.id)
+    .executeTakeFirstOrThrow()
+  return ok(c, { user: publicUser(row) })
+})
+
+router.post('/wx-unbind', async (c) => {
+  const { db } = c.get('database')
+  const current = c.get('user')
+  const row = await db
+    .selectFrom('users')
+    .selectAll()
+    .where('id', '=', current.id)
+    .executeTakeFirstOrThrow()
+  if (!row.wechat_openid) throw new ApiError(400, 'WX_NOT_BOUND', '当前账号未绑定微信')
+  await db
+    .updateTable('users')
+    .set({ wechat_openid: null, updated_at: nowIso() })
+    .where('id', '=', current.id)
+    .execute()
+  return ok(c, { user: publicUser({ ...row, wechat_openid: null }) })
+})
+
 router.get('/me', async (c) => ok(c, c.get('user')))
 
 router.post('/change-password', async (c) => {

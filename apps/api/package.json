@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev --config wrangler.dev.toml --local",
+    "dev:lan": "wrangler dev --config wrangler.dev.toml --local --ip 0.0.0.0",
     "dev:remote": "wrangler dev",
     "build:web": "bun run --cwd ../miniapp build:h5",
     "deploy": "bun run build:web && wrangler deploy",

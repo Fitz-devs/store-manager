@@ -2,23 +2,32 @@ import { useState } from 'react'
 import Taro, { useDidShow } from '@tarojs/taro'
 import { Button, Input, Text, View } from '@tarojs/components'
 import type { HomeReport, User } from '@sm/shared'
-import { api, clearToken, getToken, getUser } from '../../api/client'
+import { api, clearToken, getToken, getUser, setUser } from '../../api/client'
 import { API_BASE } from '../../config'
 import { setPendingOrdersFilter } from '../../utils/orderFilter'
 import { useAuthGuard } from '../../utils/auth'
+import { IS_WEAPP } from '../../utils/env'
 import { formatFen, ROLE_LABELS } from '../../utils/format'
 import './index.scss'
 
 export default function Me() {
   useAuthGuard()
-  const [user, setUser] = useState<User | null>(null)
+  const [user, setUserState] = useState<User | null>(null)
   const [report, setReport] = useState<HomeReport | null>(null)
   const [oldPassword, setOldPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
+  const [wxBusy, setWxBusy] = useState(false)
 
   useDidShow(() => {
-    setUser(getUser<User>())
+    setUserState(getUser<User>())
     api.get<HomeReport>('/api/reports/home').then(setReport).catch(() => undefined)
+    api
+      .get<User>('/api/auth/me')
+      .then((u) => {
+        setUser(u)
+        setUserState(u)
+      })
+      .catch(() => undefined)
   })
 
   const changePassword = async () => {
@@ -33,6 +42,42 @@ export default function Me() {
       setNewPassword('')
     } catch (error) {
       Taro.showToast({ title: (error as Error).message, icon: 'none' })
+    }
+  }
+
+  const bindWechat = async () => {
+    if (wxBusy) return
+    setWxBusy(true)
+    try {
+      const login = await Taro.login()
+      const data = await api.post<{ user: User }>('/api/auth/wx-bind-current', { code: login.code })
+      setUser(data.user)
+      setUserState(data.user)
+      Taro.showToast({ title: '微信已绑定', icon: 'success' })
+    } catch (error) {
+      Taro.showToast({ title: (error as Error).message, icon: 'none' })
+    } finally {
+      setWxBusy(false)
+    }
+  }
+
+  const unbindWechat = async () => {
+    if (wxBusy) return
+    const confirm = await Taro.showModal({
+      title: '解绑微信',
+      content: '解绑后将无法用微信一键登录，确定解绑吗？',
+    })
+    if (!confirm.confirm) return
+    setWxBusy(true)
+    try {
+      const data = await api.post<{ user: User }>('/api/auth/wx-unbind')
+      setUser(data.user)
+      setUserState(data.user)
+      Taro.showToast({ title: '已解绑微信', icon: 'success' })
+    } catch (error) {
+      Taro.showToast({ title: (error as Error).message, icon: 'none' })
+    } finally {
+      setWxBusy(false)
     }
   }
 
@@ -167,6 +212,27 @@ export default function Me() {
 
       <View className="section-title">账号安全</View>
       <View className="card">
+        <View className="user-row wechat-row">
+          <View className="wechat-info">
+            <Text>微信登录</Text>
+            <Text className="muted">
+              {user?.has_wechat
+                ? '已绑定，可一键登录'
+                : IS_WEAPP
+                  ? '未绑定'
+                  : '未绑定，请在小程序中绑定'}
+            </Text>
+          </View>
+          {user?.has_wechat ? (
+            <Button className="btn btn-ghost sm-action" loading={wxBusy} onClick={unbindWechat}>
+              解绑
+            </Button>
+          ) : IS_WEAPP ? (
+            <Button className="btn btn-primary sm-action" loading={wxBusy} onClick={bindWechat}>
+              绑定微信
+            </Button>
+          ) : null}
+        </View>
         <Input className="input field" password placeholder="原密码" value={oldPassword} onInput={(event) => setOldPassword(event.detail.value)} />
         <Input className="input field" password placeholder="新密码（至少 6 位）" value={newPassword} onInput={(event) => setNewPassword(event.detail.value)} />
         <Button className="btn btn-ghost full-btn" onClick={changePassword}>
