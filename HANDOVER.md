@@ -15,7 +15,7 @@
 | # | 需求 | 状态 |
 |---|---|---|
 | 1.1 | 扫商品码录入商品 | ✅ |
-| 1.2 | 首次录入时调公开免费接口补全商品名称/规格（查询链：淘宝开放平台 → 阿里云云市场条码API → **极数本源免费版（国内覆盖 >95%，免费）** → Open Food Facts → Open Products Facts → UPCitemdb → Barcode Spider；结果写入本地条码缓存全店复用；**缓存只存文字字段，不转存图片**） | ✅（免费通道全部就绪；极数本源匿名即用） |
+| 1.2 | 首次录入条码：**外网补全与 barcode_cache 均已删除**（2026-09），只查店内 `barcodes`；未命中手动填名称 | ✅（本地查询） |
 | 1.3 | 手动录入：入库价、零售价、友情价、销售单位 | ✅ |
 | 1.4 | 优惠信息（只做记录，如 "100元3件"、"买3送2"），且**优惠信息与其有效期关联展示** | ✅ |
 | 1.5 | 优惠有效期为**日期范围**（开始/结束，可留空=不限，可清除），不是文本框 | ✅ |
@@ -28,7 +28,7 @@
 | 1.12 | 同一商品多个 SKU（如烟不同版本，商品码相同、价格不同）；扫码命中多 SKU 时弹选择器 | ✅ |
 | 1.13 | 缺货标记（SKU 级）：列表角标 + "只看缺货"筛选 + 加购提示 + 入库时提示恢复 | ✅ |
 | 1.14 | 商品别名（支持多个，空格/逗号分隔），参与模糊搜索 | ✅ |
-| 1.15 | ~~奖品属性（免费兑换/加价换购）~~ **已移除**（2026-09 迁移 0010 DROP prizes，开单不再有奖品兑换入口） | — |
+| 1.15 | ~~奖品属性~~ **代码已删净** | — |
 | 1.16 | 商品录入页：**条码在最前面**，但展示要小（只做录入，一行操作，不占大版面） | ✅ |
 | 1.17 | 商品录入页：**图片是最大的元素**（全宽大图主视觉） | ✅ |
 
@@ -40,7 +40,7 @@
 | 2.2 | 入库单：供应商（文本字段）、日期、备注、明细、总额 | ✅ |
 | 2.3 | 拍照 OCR 批量录入：拍照收货单 → 智谱 glm-ocr 识别成表格 → 原图对照人工确认/修改 → 匹配商品（名称模糊候选/新建）→ 生成入库单 | 🟡 代码就绪，需用真实单据实测 |
 | 2.4 | 纯手工录入入口始终保留 | ✅ |
-| 2.5 | ~~商品抵扣/以货换货自动生成"商品抵扣"入库单~~ **已移除**（换货付款方式下架；历史 goods_offset 入库单保留展示） | — |
+| 2.5 | ~~商品抵扣/以货换货入库~~ **代码与字段已删净**（迁移 0014） | — |
 
 ### 3. 开单与回款
 
@@ -54,7 +54,7 @@
 | 3.6 | 付款状态简化为**未付款 / 已付款**（不要单独的"赊账"开关） | ✅ |
 | 3.7 | 付款方式**只在"已付款"时出现**：现金 / 微信 / 支付宝 / 其他（抵扣原因+金额） | ✅ |
 | 3.8 | 回款可多次、可部分：支持**开单多笔组合收款**（每笔独立方式/金额/凭证照片），合计不超订单金额；已收齐后禁止再回款；余款在订单详情继续记 | ✅ |
-| 3.9 | ~~以货换货（行家换货）~~ **已移除**（实用性不高；历史回款显示"商品抵扣（已停用）"） | — |
+| 3.9 | ~~以货换货~~ **代码已删净** | — |
 | 3.10 | 送货拍照生成水印（时间 + 地址 + GPS + 送货人），小程序和网页都能拍 | ✅ |
 | 3.11 | 订单列表入口（开单页"最近订单"+ 全部订单；"我的"页 全部/待收款/待送货） | ✅ |
 | 3.12 | 订单详情：明细、配送信息、回款记录（含凭证照片预览）、记回款、作废、彻底删除 | ✅ |
@@ -97,7 +97,7 @@
 - **不做复杂订单状态机**：配送状态 + 已收金额两个维度即可
 - **单店、自己人用**：不需要多门店、多租户、复杂 CRM、供应商管理（入库单用文本字段）
 - 评估过后端框架 bknd，因 beta 风险放弃，选 Hono + Kysely
-- **奖品兑换与以货换货已移除**（2026-09）；付款方式固定为 现金/微信/支付宝/其他
+- **奖品兑换、以货换货、商品抵扣、条码外网补全、barcode_cache 均已删净**（2026-09）；付款方式固定为 现金/微信/支付宝/其他
 - **彻底删除**：商品（先下架引导，详情页亦可直接删）、订单、入库单均可物理删除（红色强确认）；删除只清本条数据及其子行/关联照片，历史单据行永不动
 - **全库不使用外键**（迁移 0010）：关联完整性由应用层保证；订单/入库明细冗余商品快照字段
 
@@ -145,15 +145,7 @@ packages/shared   前后端共享类型 + zod schema + 常量
 5. **H5 没有 `process` 对象**：`process.env.TARO_APP_API` 在 `config/index.ts` 的 `defineConstants` 注入，不能在运行时代码里裸用
 6. **H5 静态资源**（如 tabBar 图标）需要在 `config/index.ts` 的 `copy.patterns` 显式拷贝，否则产物只有引用没有文件
 7. **本地 `wrangler dev` 用 `wrangler.dev.toml`（不含 AI binding）**；测 OCR 用 `OCR_MOCK=1`（已在 dev 配置）走本地假数据，真实识别需配 `ZHIPU_API_KEY`
-8. **条码补全链**（`src/services/barcodes.ts`，按顺序命中即停，结果全部缓存到 `barcode_cache`（只存文字，不存图）；69 开头国内码会优先走国内源）：
-   1. 淘宝码上淘 `taobao.ma.barcode.productinfo.get`（免费但**需企业开发者**，见 `services/taobao.ts` + `lib/md5.ts`）
-   2. 阿里云云市场条码API（**个人可**，有免费试用次数；通用通道：配 `ALI_MARKET_BARCODE_URL` + `ALI_MARKET_APPCODE`，兼容"聚美智数 / 物品编码中心 / 万维易源 showapi"三种返回结构）
-   3. **极数本源免费版** `GET https://v1.apizero.cn/api/barcode-lookup?barcode=`（免费，国内日常消费品覆盖 >95%；匿名 20 次/天，配 `APIZERO_KEY`（免费注册）200 次，QPS 2；免费版**不含图片**，无 key 也能用）
-   4. Open Food Facts（食品，无 key，无限制）
-   5. Open Products Facts（通用商品，无 key）
-   6. UPCitemdb（100 次/天，按 IP）
-   7. Barcode Spider（配 `BARCODESPIDER_TOKEN`，免费用户 100 次/天）
-   都查不到 → 手动录入。
+8. **条码查询**：`lookupBarcode` 只查本地 `barcodes` → 否则 `source: none`。外网补全链与 `barcode_cache` 表均已删除（迁移 0013）。
 9. **删除与关联清理**：彻底删除商品/订单/入库单时，同步删除 R2 中关联照片（商品图/送货水印/单据照/回款凭证）；删图失败不影响主流程（先删库后删图）
 10. 小程序端必须通过 `npx taro build --type weapp` 产物验证；网页端用 `wrangler dev` + 无头浏览器（CDP）截图验证过 UI
 
@@ -170,14 +162,14 @@ packages/shared   前后端共享类型 + zod schema + 常量
 | promotions | 优惠（sku_id / content / starts_at / ends_at，一个规格可挂多条） |
 | product_links | 关联商品（product_id / linked_product_id / relation / note，整箱↔单件互相跳转） |
 | price_history | 价格历史（sku_id / price_type=purchase\|retail\|friend / old_value / new_value / source / reason / operator_id） |
-| purchases | 入库单（purchase_no / supplier_name / kind=purchase\|goods_offset(历史) / total_amount / image_keys(JSON) / ocr_raw / ordered_at） |
+| purchases | 入库单（purchase_no / supplier_name / total_amount / image_keys(JSON) / ocr_raw / ordered_at） |
 | purchase_items | 入库明细（sku_id / **product_name/spec_name 快照** / unit_name / conversion / qty / base_qty / unit_price / amount） |
 | customers | 客户（name / phone / address / notes） |
 | customer_addresses | 客户地址（customer_id / label / contact_name / phone / address / is_default） |
 | orders | 订单（order_no / customer_id / delivery_* / delivered_at / delivery_photo_key / subtotal / discount / total / paid_amount / is_credit / status / delivery_status） |
 | order_items | 订单明细（sku_id / **product_name/spec_name 快照** / unit_name / conversion / qty / unit_price / amount / promotion_text） |
-| payments | 回款（payment_no / order_id / method=cash\|wechat\|alipay\|other（历史数据另有 goods） / amount / note / photo_key / purchase_id(历史) / received_at） |
-| barcode_cache | 条码补全缓存（code / name / brand / spec / source / fetched_at，**只存文字，无图片**） |
+| payments | 回款（payment_no / order_id / method=cash\|wechat\|alipay\|other / amount / note / photo_key / received_at） |
+| barcode_cache | ~~条码补全缓存~~ **已删除**（迁移 0013） | — |
 | categories | 分类（name） |
 | product_categories | 商品↔分类多对多 |
 | settings | 键值配置（如店名） |
@@ -242,11 +234,7 @@ cd apps/api && bun run deploy            # 构建 H5 + 部署 Worker
 1. **微信小程序提审的域名备案**（Web 版已可直接访问；小程序 request/uploadFile 合法域名要求备案，`160847.xyz` 备案后再提审；ESA 接入为可选加速）
 2. **微信小程序上线配置**：AppID 已填；仍需服务器域名（https://wj.160847.xyz）、隐私协议、地理位置接口申请、提审。完整步骤见 `docs/wechat-miniprogram-setup.md`
 3. **微信登录**：`WX_APPID` / `WX_SECRET` 已配置（线上 `wx_login_enabled: true`）；待真机走一遍绑定流程
-4. **条码补全数据源**：
-   - **极数本源（推荐先配，免费）**：https://apizero.cn/account/keys 注册拿 Key → `wrangler secret put APIZERO_KEY`（不配也能用，匿名 20 次/天；配了 200 次，QPS 2）
-   - 阿里云云市场（个人可，国内覆盖最好、含图片数据集）：搜索"商品条码查询"，选带免费试用的供应商 → `ALI_MARKET_BARCODE_URL` / `ALI_MARKET_APPCODE`
-   - Barcode Spider（免费 100 次/天）：devapi.barcodespider.com 注册 → `BARCODESPIDER_TOKEN`
-   - 淘宝开放平台需企业认证，个人不可用（代码已就绪 `TB_APP_KEY`/`TB_APP_SECRET`）
+4. ~~条码补全数据源~~ **已移除外网补全**（2026-09）；扫码只查本地库与历史缓存
 5. **OCR 真实单据实测**：用真实收货单测智谱 glm-ocr 识别质量；如不理想可换 `ZHIPU_OCR_MODEL` 或降图片尺寸
 6. 报表增强：毛利、日结、畅销/滞销（当前只有首页基础统计）
 7. 送货单/小票分享（生成图片版，便于微信发给客户）
@@ -264,4 +252,4 @@ cd apps/api && bun run deploy            # 构建 H5 + 部署 Worker
 - 单元测试：30 项通过（金额换算、单位价归一、涨跌幅、密码哈希、条码提供方解析、OCR 草稿）
 - UI 验证：无头浏览器实际渲染验证（登录、开单、客户选择/新建、地址回显、付款、商品录入、日期范围等）
 - 构建：H5 构建无警告；小程序 `bun run build:weapp` 可出包
-- 线上：迁移 0001~0012 已应用（含 0010 去 prizes+全库去外键、0011 条码缓存去图、0012 回款凭证列），Worker + Web 已部署，`/status` 正常
+- 线上：迁移 0001~0013 已应用（含 0010 去 prizes+全库去外键、0011 条码缓存去图、0012 回款凭证列、0013 drop barcode_cache）；Worker + Web 已部署，`/status` 正常。**0014（drop purchases.kind / payments.purchase_id）待 migrate:remote**

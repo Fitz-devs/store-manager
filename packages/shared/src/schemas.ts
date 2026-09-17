@@ -241,10 +241,6 @@ export const ocrFromRowSchema = z.object({
   sale_unit: z.string().trim().min(1).max(10).default('箱'),
 })
 
-export const barcodeEnrichSchema = z.object({
-  code: z.string().trim().min(1).max(64),
-})
-
 export const idParamSchema = z.object({
   id,
 })

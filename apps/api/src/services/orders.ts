@@ -12,7 +12,6 @@ import type { DB } from '../db/schema'
 import type { StorageAdapter } from '../adapters/storage'
 import { batchCompiled } from '../db/batch'
 import { ApiError } from '../lib/errors'
-import { parseStoredImageKeys } from '../lib/images'
 import { nextOrderNo, nextPaymentNo, nowIso } from '../lib/ids'
 import { loadSkuMeta } from './purchases'
 
@@ -146,33 +145,12 @@ export async function purgeOrder(
     .where('id', '=', id)
     .executeTakeFirst()
   if (!order) throw new ApiError(404, 'ORDER_NOT_FOUND', '订单不存在')
-  // 本单回款里因商品抵扣衍生的入库单一并删除
   const paymentRows = await db
     .selectFrom('payments')
-    .select(['purchase_id', 'photo_key'])
+    .select(['photo_key'])
     .where('order_id', '=', id)
     .execute()
-  const purchaseIds = [
-    ...new Set(
-      paymentRows.map((row) => row.purchase_id).filter((pid): pid is number => pid !== null),
-    ),
-  ]
-  let derivedImageKeys: string[] = []
-  if (purchaseIds.length) {
-    const purchaseRows = await db
-      .selectFrom('purchases')
-      .select(['id', 'image_keys'])
-      .where('id', 'in', purchaseIds)
-      .execute()
-    derivedImageKeys = purchaseRows.flatMap((row) => parseStoredImageKeys(row.image_keys))
-  }
   const statements = [
-    ...(purchaseIds.length
-      ? [
-          db.deleteFrom('purchase_items').where('purchase_id', 'in', purchaseIds).compile(),
-          db.deleteFrom('purchases').where('id', 'in', purchaseIds).compile(),
-        ]
-      : []),
     db.deleteFrom('payments').where('order_id', '=', id).compile(),
     db.deleteFrom('order_items').where('order_id', '=', id).compile(),
     db.deleteFrom('orders').where('id', '=', id).compile(),
@@ -180,7 +158,6 @@ export async function purgeOrder(
   await batchCompiled(d1, statements)
   const photoKeys = [
     order.delivery_photo_key,
-    ...derivedImageKeys,
     ...paymentRows.map((row) => row.photo_key),
   ].filter((key): key is string => Boolean(key))
   for (const key of photoKeys) {
@@ -222,7 +199,6 @@ export async function getOrder(db: Kysely<DB>, id: number): Promise<OrderWithIte
     customer_id: payment.customer_id,
     method: payment.method as Payment['method'],
     amount: payment.amount,
-    purchase_id: payment.purchase_id,
     photo_key: payment.photo_key,
     note: payment.note,
     operator_id: payment.operator_id,

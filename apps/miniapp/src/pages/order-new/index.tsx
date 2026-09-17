@@ -273,13 +273,14 @@ export default function OrderNew() {
   const scan = async () => {
     const code = await scanBarcode()
     if (!code) return
+    Taro.showLoading({ title: '查询中', mask: true })
     try {
       const lookup = await api.get<{
         source: string
         product?: ProductDetail
         matched_sku_ids?: number[]
-        cache?: { name?: string | null }
       }>(`/api/barcodes/lookup?code=${encodeURIComponent(code)}`)
+      Taro.hideLoading()
       if (lookup.product) {
         const detail = lookup.product
         const activeSkus = detail.skus.filter((sku) => sku.status === 'active')
@@ -301,16 +302,6 @@ export default function OrderNew() {
         if (sku) await offerAddSku(sku, detail.product.name)
         return
       }
-      if (lookup.cache?.name) {
-        const confirm = await Taro.showModal({
-          title: `条码未录入：${lookup.cache.name}`,
-          content: '是否立即录入该商品？',
-        })
-        if (confirm.confirm) {
-          Taro.navigateTo({ url: `/pages/product-edit/index?barcode=${encodeURIComponent(code)}` })
-        }
-        return
-      }
       const confirm = await Taro.showModal({
         title: `未找到条码 ${code}`,
         content: '是否新建商品？',
@@ -319,7 +310,10 @@ export default function OrderNew() {
         Taro.navigateTo({ url: `/pages/product-edit/index?barcode=${encodeURIComponent(code)}` })
       }
     } catch (error) {
+      Taro.hideLoading()
       Taro.showToast({ title: (error as Error).message, icon: 'none' })
+    } finally {
+      Taro.hideLoading()
     }
   }
 

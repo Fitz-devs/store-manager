@@ -74,6 +74,5 @@ echo
 echo "完成。还需要手动做的事："
 echo "1. 给 Worker 绑定自定义域名（Cloudflare 控制台 → Workers → 设置 → 域名与路由）"
 echo "2. 可选：配置微信登录 secrets：bunx wrangler secret put WX_APPID / WX_SECRET"
-echo "3. 可选：条码补全：bunx wrangler secret put ALI_MARKET_BARCODE_URL / ALI_MARKET_APPCODE / BARCODESPIDER_TOKEN"
-echo "4. 可选：覆盖 OCR 模型：bunx wrangler secret put OCR_MODEL"
-echo "5. 域名备案后接入阿里云 ESA，回源上面绑定的 Worker 自定义域名"
+echo "3. 可选：覆盖 OCR 模型：bunx wrangler secret put OCR_MODEL"
+echo "4. 域名备案后接入阿里云 ESA，回源上面绑定的 Worker 自定义域名"

@@ -3,7 +3,6 @@ import type {
   OrderStatus,
   PaymentMethod,
   PriceType,
-  PurchaseKind,
   StockStatus,
   UserRole,
 } from './constants'
@@ -137,7 +136,6 @@ export interface Purchase {
   id: number
   purchase_no: string
   supplier_name: string | null
-  kind: PurchaseKind
   total_amount: number
   note: string | null
   image_keys: string | null
@@ -224,7 +222,6 @@ export interface Payment {
   customer_id: number | null
   method: PaymentMethod
   amount: number
-  purchase_id: number | null
   photo_key: string | null
   note: string | null
   operator_id: number | null
@@ -264,15 +261,6 @@ export interface CustomerListItem extends Customer {
   last_order_at: string | null
 }
 
-export interface BarcodeCacheEntry {
-  code: string
-  name: string | null
-  brand: string | null
-  spec: string | null
-  source: string | null
-  fetched_at: string | null
-}
-
 export interface ProductDetail {
   product: Product
   skus: SkuWithBarcodes[]
@@ -282,19 +270,8 @@ export interface ProductDetail {
 }
 
 export interface BarcodeLookupResult {
-  source:
-    | 'local'
-    | 'cache'
-    | 'taobao'
-    | 'alimarket'
-    | 'apizero'
-    | 'openfoodfacts'
-    | 'openproductsfacts'
-    | 'upcitemdb'
-    | 'barcodespider'
-    | 'none'
+  source: 'local' | 'none'
   product?: ProductDetail
-  cache?: BarcodeCacheEntry
   matched_sku_ids?: number[]
 }
 

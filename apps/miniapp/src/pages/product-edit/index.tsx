@@ -316,18 +316,6 @@ export default function ProductEdit() {
       }
       if (prefilledBarcode) {
         setCodes((prev) => (prev.length ? prev : [prefilledBarcode]))
-        try {
-          const lookup = await api.get<{
-            cache?: {
-              name?: string | null
-              brand?: string | null
-            }
-          }>(`/api/barcodes/lookup?code=${encodeURIComponent(prefilledBarcode)}`)
-          if (lookup.cache?.name && !prefilledName) setName(lookup.cache.name)
-          if (lookup.cache?.brand) setBrand(lookup.cache.brand)
-        } catch {
-          // 条码补全失败时保持手动录入
-        }
       }
       if (prefilledName) setName(prefilledName)
       if (fromPurchase) {

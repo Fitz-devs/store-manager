@@ -83,7 +83,6 @@ export interface PurchasesTable {
   id: Generated<number>
   purchase_no: string
   supplier_name: string | null
-  kind: string
   total_amount: number
   note: string | null
   image_keys: string | null
@@ -179,21 +178,11 @@ export interface PaymentsTable {
   customer_id: number | null
   method: string
   amount: number
-  purchase_id: number | null
   photo_key: string | null
   note: string | null
   operator_id: number | null
   received_at: string
   created_at: string
-}
-
-export interface BarcodeCacheTable {
-  code: string
-  name: string | null
-  brand: string | null
-  spec: string | null
-  source: string | null
-  fetched_at: string | null
 }
 
 export interface SettingsTable {
@@ -227,7 +216,6 @@ export interface DB {
   orders: OrdersTable
   order_items: OrderItemsTable
   payments: PaymentsTable
-  barcode_cache: BarcodeCacheTable
   settings: SettingsTable
   categories: CategoriesTable
   product_categories: ProductCategoriesTable

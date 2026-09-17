@@ -14,7 +14,6 @@ export async function exportAll(db: Kysely<DB>) {
     orders,
     orderItems,
     payments,
-    barcodeCache,
     settings,
   ] = await Promise.all([
     db
@@ -31,7 +30,6 @@ export async function exportAll(db: Kysely<DB>) {
     db.selectFrom('orders').selectAll().execute(),
     db.selectFrom('order_items').selectAll().execute(),
     db.selectFrom('payments').selectAll().execute(),
-    db.selectFrom('barcode_cache').selectAll().execute(),
     db.selectFrom('settings').selectAll().execute(),
   ])
 
@@ -48,7 +46,6 @@ export async function exportAll(db: Kysely<DB>) {
     orders,
     order_items: orderItems,
     payments,
-    barcode_cache: barcodeCache,
     settings,
   }
 }

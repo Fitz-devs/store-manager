@@ -4,7 +4,7 @@ import { Button, Image, Text, View } from '@tarojs/components'
 import type { PurchaseWithItems } from '@sm/shared'
 import { api, fileUrl } from '../../api/client'
 import { useAuthGuard } from '../../utils/auth'
-import { formatDateTime, formatFen, PURCHASE_KIND_LABELS } from '../../utils/format'
+import { formatDateTime, formatFen } from '../../utils/format'
 import './index.scss'
 
 export default function PurchaseDetail() {
@@ -77,9 +77,7 @@ export default function PurchaseDetail() {
       <View className="card">
         <View className="row-between">
           <Text className="detail-no">{purchase.purchase_no}</Text>
-          <Text className={`tag ${purchase.kind === 'goods_offset' ? 'tag-warn' : 'tag-muted'}`}>
-            {PURCHASE_KIND_LABELS[purchase.kind]}
-          </Text>
+          <Text className="tag tag-muted">入库</Text>
         </View>
         <View className="detail-meta">
           <Text className="muted">

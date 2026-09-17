@@ -8,12 +8,6 @@ export interface Bindings {
   JWT_SECRET: string
   WX_APPID?: string
   WX_SECRET?: string
-  TB_APP_KEY?: string
-  TB_APP_SECRET?: string
-  ALI_MARKET_BARCODE_URL?: string
-  ALI_MARKET_APPCODE?: string
-  APIZERO_KEY?: string
-  BARCODESPIDER_TOKEN?: string
   OCR_MOCK?: string
   /** 智谱 API Key（glm-ocr） */
   ZHIPU_API_KEY?: string

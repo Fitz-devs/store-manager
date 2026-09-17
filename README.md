@@ -4,7 +4,7 @@
 
 ## 功能
 
-- **商品管理**：扫码录入、拍照/条码补全、多 SKU（同码不同版本）、多优惠、整箱↔单件关联商品、规格归档、缺货标记、商品图片、价格历史与趋势、入库记录、彻底删除
+- **商品管理**：扫码录入、多 SKU（同码不同版本）、多优惠、整箱↔单件关联商品、规格归档、缺货标记、商品图片、价格历史与趋势、入库记录、彻底删除
 - **入库**：供货商/日期/清单、入库价与上次不同时提示是否同步零售价、拍照 OCR 识别收货单（原图对照、人工校对后入库）
 - **开单**：扫码/搜索加购、客户选择、送货上门（地址/时间）、现结或赊账、多笔组合收款（微信/支付宝/现金/其他抵扣，各笔可传凭证照片）、余款可继续回款
 - **送货**：拍照自动打时间 + 地址 + GPS + 送货人水印
@@ -87,11 +87,6 @@ bunx wrangler secret put JWT_SECRET
 # 可选：微信登录
 bunx wrangler secret put WX_APPID
 bunx wrangler secret put WX_SECRET
-# 可选：条码补全（极数本源免费版国内覆盖好，匿名即可用；配 key 额度更高）
-bunx wrangler secret put APIZERO_KEY
-bunx wrangler secret put ALI_MARKET_BARCODE_URL
-bunx wrangler secret put ALI_MARKET_APPCODE
-bunx wrangler secret put BARCODESPIDER_TOKEN
 # 必需：收货单 OCR（智谱 glm-ocr，https://open.bigmodel.cn 注册拿 key）
 bunx wrangler secret put ZHIPU_API_KEY
 # 可选：覆盖 OCR 模型/接口地址
@@ -142,7 +137,7 @@ Worker 绑定一个自定义域名（例如 `origin.example.com`），供 ESA �
 
 - **本地 OCR 假数据**：`wrangler.dev.toml` 配了 `OCR_MOCK=1`，本地识别返回固定的假收货单，便于联调完整流程
 - **微信内 iOS 摄像头/扫码**：微信小程序原生能力不受浏览器限制；H5 端已用 ZXing-WASM 方案
-- **条码补全查不到**：查询链为 淘宝（需企业认证）→ 阿里云云市场条码API（个人可）→ **极数本源免费版（无需 key 每天 20 次，登录后额度更高，国内商品覆盖 >95%）** → Open Food Facts → Open Products Facts → UPCitemdb → Barcode Spider，都查不到时手动录入即可；查到的结果会缓存到本地条码库，全店复用
+- **条码查不到**：只查店内条码库与历史缓存，不再访问外网补全；查不到时手动录入即可
 - **OCR 识别不准**：识别结果提供了原图对照与可编辑表格，人工校对后入库；纯手工录入入口始终可用
 - **地理水印没有坐标**：需先在小程序后台开通地理位置接口；未开通时水印仅显示时间与订单地址
 

@@ -3,7 +3,6 @@ import type {
   Order,
   PaymentMethod,
   PriceType,
-  PurchaseKind,
   StockStatus,
   UserRole,
 } from '@sm/shared'
@@ -37,13 +36,11 @@ export function formatDay(iso: string | null | undefined): string {
   return iso.slice(0, 10)
 }
 
-/** 历史数据仍存在 goods（换货抵扣）回款，展示时需要标签 */
-export const PAYMENT_METHOD_LABELS: Record<PaymentMethod | 'goods', string> = {
+export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   cash: '现金',
   wechat: '微信',
   alipay: '支付宝',
   other: '其他',
-  goods: '商品抵扣（已停用）',
 }
 
 export const PRICE_TYPE_LABELS: Record<PriceType, string> = {
@@ -61,11 +58,6 @@ export const DELIVERY_STATUS_LABELS: Record<DeliveryStatus, string> = {
 export const STOCK_STATUS_LABELS: Record<StockStatus, string> = {
   in_stock: '在售',
   out_of_stock: '缺货',
-}
-
-export const PURCHASE_KIND_LABELS: Record<PurchaseKind, string> = {
-  purchase: '入库',
-  goods_offset: '商品抵扣',
 }
 
 export const ROLE_LABELS: Record<UserRole, string> = {

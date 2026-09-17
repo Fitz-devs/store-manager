@@ -4,13 +4,11 @@ export type PriceType = (typeof PRICE_TYPES)[number]
 export const PAYMENT_METHODS = ['cash', 'wechat', 'alipay', 'other'] as const
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number]
 
-/** 历史数据仍存在 goods（换货抵扣）回款，展示时需要标签 */
-export const PAYMENT_METHOD_LABELS: Record<PaymentMethod | 'goods', string> = {
+export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   cash: '现金',
   wechat: '微信',
   alipay: '支付宝',
   other: '其他',
-  goods: '商品抵扣（已停用）',
 }
 
 export const BARCODE_TYPES = ['single', 'box'] as const
@@ -24,9 +22,6 @@ export type OrderStatus = (typeof ORDER_STATUSES)[number]
 
 export const DELIVERY_STATUSES = ['none', 'pending', 'delivered'] as const
 export type DeliveryStatus = (typeof DELIVERY_STATUSES)[number]
-
-export const PURCHASE_KINDS = ['purchase', 'goods_offset'] as const
-export type PurchaseKind = (typeof PURCHASE_KINDS)[number]
 
 export const USER_ROLES = ['owner', 'staff'] as const
 export type UserRole = (typeof USER_ROLES)[number]

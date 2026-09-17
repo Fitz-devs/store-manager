@@ -7,9 +7,8 @@ import ScanFab from '../../components/scan-fab'
 import { EmptyState } from '../../components/empty-state'
 import { ListLoading } from '../../components/list-loading'
 import { SearchBox } from '../../components/search-box'
-import { StatusTag } from '../../components/status-tag'
 import { useAuthGuard } from '../../utils/auth'
-import { formatFen, PURCHASE_KIND_LABELS } from '../../utils/format'
+import { formatFen } from '../../utils/format'
 import './index.scss'
 
 export default function Purchases() {
@@ -88,9 +87,7 @@ export default function Purchases() {
         >
           <View className="row-between">
             <Text className="sm-list-card-title">{purchase.purchase_no}</Text>
-            <StatusTag tone={purchase.kind === 'goods_offset' ? 'warn' : 'muted'}>
-              {PURCHASE_KIND_LABELS[purchase.kind]}
-            </StatusTag>
+            <Text className="tag tag-muted">入库</Text>
           </View>
           <View className="row-between">
             <Text className="muted">

@@ -108,7 +108,6 @@ export async function createPurchase(
     .values({
       purchase_no: purchaseNo,
       supplier_name: input.supplier_name ?? null,
-      kind: 'purchase',
       total_amount: totalAmount,
       note: input.note ?? null,
       image_keys: input.image_keys?.length ? JSON.stringify(input.image_keys) : null,
@@ -169,7 +168,6 @@ export async function getPurchase(db: Kysely<DB>, id: number): Promise<PurchaseW
     id: row.id,
     purchase_no: row.purchase_no,
     supplier_name: row.supplier_name,
-    kind: row.kind as Purchase['kind'],
     total_amount: row.total_amount,
     note: row.note,
     image_keys: row.image_keys,
@@ -263,7 +261,6 @@ export async function listPurchases(
     id: row.id,
     purchase_no: row.purchase_no,
     supplier_name: row.supplier_name,
-    kind: row.kind as Purchase['kind'],
     total_amount: row.total_amount,
     note: row.note,
     image_keys: row.image_keys,
@@ -288,9 +285,7 @@ export async function purgePurchase(
     .where('id', '=', id)
     .executeTakeFirst()
   if (!purchase) throw new ApiError(404, 'PURCHASE_NOT_FOUND', '入库单不存在')
-  // 因商品抵扣产生的回款记录保留，仅解除与该入库单的关联
   await batchCompiled(d1, [
-    db.updateTable('payments').set({ purchase_id: null }).where('purchase_id', '=', id).compile(),
     db.deleteFrom('purchase_items').where('purchase_id', '=', id).compile(),
     db.deleteFrom('purchases').where('id', '=', id).compile(),
   ])

@@ -265,10 +265,12 @@ export default function PurchaseNew() {
   const scan = async () => {
     const code = await scanBarcode()
     if (!code) return
+    Taro.showLoading({ title: '查询中', mask: true })
     try {
       const lookup = await api.get<{ product?: ProductDetail; matched_sku_ids?: number[] }>(
         `/api/barcodes/lookup?code=${encodeURIComponent(code)}`,
       )
+      Taro.hideLoading()
       if (lookup.product) {
         const matched = lookup.product.skus.filter((sku) => lookup.matched_sku_ids?.includes(sku.id))
         const candidates = matched.length ? matched : lookup.product.skus.filter((sku) => sku.status === 'active')
@@ -288,8 +290,11 @@ export default function PurchaseNew() {
         Taro.navigateTo({ url: `/pages/product-edit/index?barcode=${encodeURIComponent(code)}` })
       }
     } catch (error) {
+      Taro.hideLoading()
       const message = (error as Error).message ?? ''
       if (!message.includes('cancel')) Taro.showToast({ title: message || '扫码失败', icon: 'none' })
+    } finally {
+      Taro.hideLoading()
     }
   }
 

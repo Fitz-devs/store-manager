@@ -146,7 +146,7 @@ export default function OrderDetailPage() {
     const confirm = await Taro.showModal({
       title: '彻底删除订单',
       content:
-        '仅删除这张订单、其商品行与回款记录，商品档案与入库记录不受影响（商品抵扣衍生的入库单一并删除）。删除后不可恢复，确定吗？',
+        '仅删除这张订单、其商品行与回款记录，商品档案与入库记录不受影响。删除后不可恢复，确定吗？',
       confirmColor: '#dc2626',
     })
     if (!confirm.confirm) return
