@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
-import { customerAddressInputSchema, customerInputSchema, customerUpdateSchema } from '@sm/shared'
+import { customerAddressInputSchema, customerAddressUpdateSchema, customerInputSchema, customerUpdateSchema } from '@sm/shared'
 import type { AppEnv } from '../env'
 import { ApiError, ok, parseBody, parseQuery } from '../lib/errors'
 import {
@@ -12,6 +12,7 @@ import {
   listCustomers,
   setDefaultCustomerAddress,
   updateCustomer,
+  updateCustomerAddress,
 } from '../services/customers'
 
 const router = new Hono<AppEnv>()
@@ -72,6 +73,14 @@ router.post('/:id/addresses/:addressId/default', async (c) => {
   const id = idSchema.parse(c.req.param('id'))
   const addressId = idSchema.parse(c.req.param('addressId'))
   const address = await setDefaultCustomerAddress(c.get('database').db, id, addressId)
+  return ok(c, address)
+})
+
+router.patch('/:id/addresses/:addressId', async (c) => {
+  const id = idSchema.parse(c.req.param('id'))
+  const addressId = idSchema.parse(c.req.param('addressId'))
+  const input = await parseBody(c, customerAddressUpdateSchema)
+  const address = await updateCustomerAddress(c.get('database').db, id, addressId, input)
   return ok(c, address)
 })
 

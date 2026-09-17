@@ -5,6 +5,7 @@ import type { CustomerDetail, Order } from '@sm/shared'
 import { api } from '../../api/client'
 import { useAuthGuard } from '../../utils/auth'
 import { formatFen, orderRemaining, orderStatusTagClass, orderStatusText } from '../../utils/format'
+import { hasCoords, openMapForNavigation, pickMapLocation, promptMapFallback, formatPickedAddress } from '../../utils/map'
 import './index.scss'
 
 export default function CustomerDetailPage() {
@@ -24,6 +25,9 @@ export default function CustomerDetailPage() {
   const [addrContact, setAddrContact] = useState('')
   const [addrPhone, setAddrPhone] = useState('')
   const [addrAddress, setAddrAddress] = useState('')
+  const [addrLat, setAddrLat] = useState<number | null>(null)
+  const [addrLng, setAddrLng] = useState<number | null>(null)
+  const [pinningId, setPinningId] = useState<number | null>(null)
 
   const load = async () => {
     if (!Number.isFinite(id)) {
@@ -82,6 +86,24 @@ export default function CustomerDetailPage() {
     if (Number.isFinite(id)) load()
   })
 
+  const resetAddressForm = () => {
+    setAddrLabel('')
+    setAddrContact('')
+    setAddrPhone('')
+    setAddrAddress('')
+    setAddrLat(null)
+    setAddrLng(null)
+  }
+
+  const pickFormLocation = async () => {
+    const picked = await pickMapLocation(addrAddress.trim() || detail?.name || '')
+    if (!picked) return
+    setAddrLat(picked.lat)
+    setAddrLng(picked.lng)
+    // 回填「行政地址 + POI 名称」，用户可再改门牌
+    setAddrAddress(formatPickedAddress(picked) || addrAddress)
+  }
+
   const addAddress = async () => {
     if (!addrAddress.trim()) {
       Taro.showToast({ title: '请填写地址', icon: 'none' })
@@ -93,17 +115,62 @@ export default function CustomerDetailPage() {
         contact_name: addrContact.trim() || null,
         phone: addrPhone.trim() || null,
         address: addrAddress.trim(),
+        lat: addrLat,
+        lng: addrLng,
         is_default: !detail?.addresses.length,
       })
       Taro.showToast({ title: '地址已保存', icon: 'success' })
-      setAddrLabel('')
-      setAddrContact('')
-      setAddrPhone('')
-      setAddrAddress('')
+      resetAddressForm()
       setShowAddressForm(false)
       load()
     } catch (error) {
       Taro.showToast({ title: (error as Error).message, icon: 'none' })
+    }
+  }
+
+  const pinExistingAddress = async (item: { id: number; address: string }) => {
+    if (pinningId) return
+    setPinningId(item.id)
+    try {
+      const picked = await pickMapLocation(item.address)
+      if (!picked) return
+      // 只更新坐标，保留原详细地址
+      await api.patch(`/api/customers/${id}/addresses/${item.id}`, {
+        lat: picked.lat,
+        lng: picked.lng,
+      })
+      Taro.showToast({ title: '已保存坐标', icon: 'success' })
+      await load()
+      await openMapForNavigation({
+        lat: picked.lat,
+        lng: picked.lng,
+        address: item.address,
+        name: item.address,
+      })
+    } catch (error) {
+      Taro.showToast({ title: (error as Error).message, icon: 'none' })
+    } finally {
+      setPinningId(null)
+    }
+  }
+
+  const openAddressMap = async (item: {
+    id: number
+    address: string
+    lat: number | null
+    lng: number | null
+    label: string | null
+    contact_name: string | null
+  }) => {
+    const result = await openMapForNavigation({
+      lat: item.lat,
+      lng: item.lng,
+      address: item.address,
+      name: item.address,
+    })
+    if (result === 'picked-later') {
+      const action = await promptMapFallback(item.address)
+      if (action === 'pick') await pinExistingAddress(item)
     }
   }
 
@@ -184,12 +251,21 @@ export default function CustomerDetailPage() {
                     设为默认
                   </Text>
                 )}
+                <Text className="sm-action" onClick={() => pinExistingAddress(item)}>
+                  {hasCoords(item) ? '重选坐标' : '地图选点'}
+                </Text>
                 <Text className="sm-action sm-action-danger" onClick={() => removeAddress(item.id)}>
                   删除
                 </Text>
               </View>
             </View>
-            <Text>{item.address}</Text>
+            <Text
+              className={hasCoords(item) ? 'address-link-ready' : undefined}
+              onClick={() => openAddressMap(item)}
+            >
+              {item.address}
+              {hasCoords(item) ? ' · 导航' : ' · 点此定位'}
+            </Text>
             {(item.contact_name || item.phone) && (
               <Text className="muted">{[item.contact_name, item.phone].filter(Boolean).join(' · ')}</Text>
             )}
@@ -203,13 +279,16 @@ export default function CustomerDetailPage() {
             <Input className="input field" type="tel" maxlength={20} placeholder="电话" value={addrPhone} onInput={(event) => setAddrPhone(event.detail.value)} />
             <Textarea
               className="input field sm-textarea"
-              placeholder="详细地址 *"
+              placeholder="详细地址 *（选点后可补门牌等）"
               value={addrAddress}
               maxlength={200}
               autoHeight
               onInput={(event) => setAddrAddress(event.detail.value)}
             />
             <View className="inline-actions">
+              <Button className="btn btn-ghost" onClick={pickFormLocation}>
+                地图选点
+              </Button>
               <Button className="btn btn-ghost" onClick={() => setShowAddressForm(false)}>
                 取消
               </Button>
@@ -217,6 +296,9 @@ export default function CustomerDetailPage() {
                 保存地址
               </Button>
             </View>
+            {addrLat != null && addrLng != null ? (
+              <Text className="muted">已选坐标 {addrLat.toFixed(5)}, {addrLng.toFixed(5)}</Text>
+            ) : null}
           </View>
         ) : (
           <Button className="btn btn-ghost full-btn" onClick={() => setShowAddressForm(true)}>

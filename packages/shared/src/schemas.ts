@@ -155,12 +155,45 @@ export const checkPricesSchema = z.object({
     .max(200),
 })
 
-export const customerAddressInputSchema = z.object({
-  label: nullableText(20),
-  contact_name: nullableText(50),
-  phone: nullableText(30),
-  address: z.string().trim().min(1).max(200),
-  is_default: z.coerce.boolean().optional(),
+export const geoLat = z.number().min(-90).max(90)
+export const geoLng = z.number().min(-180).max(180)
+
+const pairedGeoRefine = (value: { lat?: number | null; lng?: number | null }, ctx: z.RefinementCtx) => {
+  const hasLat = value.lat !== undefined && value.lat !== null
+  const hasLng = value.lng !== undefined && value.lng !== null
+  if (hasLat !== hasLng) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'lat 与 lng 必须同时提供或同时为空',
+      path: hasLat ? ['lng'] : ['lat'],
+    })
+  }
+}
+
+export const customerAddressInputSchema = z
+  .object({
+    label: nullableText(20),
+    contact_name: nullableText(50),
+    phone: nullableText(30),
+    address: z.string().trim().min(1).max(200),
+    lat: geoLat.nullable().optional(),
+    lng: geoLng.nullable().optional(),
+    is_default: z.coerce.boolean().optional(),
+  })
+  .superRefine(pairedGeoRefine)
+
+export const customerAddressUpdateSchema = z
+  .object({
+    address: z.string().trim().min(1).max(200).optional(),
+    lat: geoLat.nullable().optional(),
+    lng: geoLng.nullable().optional(),
+  })
+  .superRefine(pairedGeoRefine)
+
+export const deliveryLocationSchema = z.object({
+  lat: geoLat,
+  lng: geoLng,
+  address: z.string().trim().min(1).max(200).optional(),
 })
 
 export const customerInputSchema = z.object({
@@ -175,13 +208,17 @@ export const customerUpdateSchema = customerInputSchema.partial().extend({
   status: z.enum(['active', 'archived']).optional(),
 })
 
-export const deliveryInputSchema = z.object({
-  required: z.coerce.boolean().default(false),
-  address: nullableText(200),
-  contact: nullableText(50),
-  phone: nullableText(30),
-  at: nullableText(40),
-})
+export const deliveryInputSchema = z
+  .object({
+    required: z.coerce.boolean().default(false),
+    address: nullableText(200),
+    contact: nullableText(50),
+    phone: nullableText(30),
+    at: nullableText(40),
+    lat: geoLat.nullable().optional(),
+    lng: geoLng.nullable().optional(),
+  })
+  .superRefine(pairedGeoRefine)
 
 export const orderItemInputSchema = z.object({
   sku_id: id,
@@ -262,4 +299,7 @@ export type PurchaseCreateInput = z.infer<typeof purchaseCreateSchema>
 export type OrderCreateInput = z.infer<typeof orderCreateSchema>
 export type PaymentCreateInput = z.infer<typeof paymentCreateSchema>
 export type CustomerInput = z.infer<typeof customerInputSchema>
+export type CustomerAddressInput = z.infer<typeof customerAddressInputSchema>
+export type CustomerAddressUpdateInput = z.infer<typeof customerAddressUpdateSchema>
+export type DeliveryLocationInput = z.infer<typeof deliveryLocationSchema>
 export type ListQueryInput = z.infer<typeof listQuerySchema>

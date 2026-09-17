@@ -186,6 +186,8 @@ export interface Order {
   delivery_at: string | null
   delivered_at: string | null
   delivery_photo_key: string | null
+  delivery_lat: number | null
+  delivery_lng: number | null
   subtotal: number
   discount: number
   total: number
@@ -204,6 +206,7 @@ export interface OrderItem {
   id: number
   order_id: number
   sku_id: number
+  product_id: number | null
   product_name: string | null
   spec_name: string | null
   unit_name: string
@@ -243,6 +246,8 @@ export interface CustomerAddress {
   contact_name: string | null
   phone: string | null
   address: string
+  lat: number | null
+  lng: number | null
   is_default: number
   created_at: string
   updated_at: string | null

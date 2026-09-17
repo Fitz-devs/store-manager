@@ -65,10 +65,10 @@ const config = {
   },
   permission: {
     'scope.userLocation': {
-      desc: '送货拍照时用于记录位置水印',
+      desc: '送货拍照水印与地图选点/导航需要位置信息',
     },
   },
-  requiredPrivateInfos: ['getLocation'],
+  requiredPrivateInfos: ['getLocation', 'chooseLocation'],
 }
 
 export default defineAppConfig(config as unknown as Parameters<typeof defineAppConfig>[0])

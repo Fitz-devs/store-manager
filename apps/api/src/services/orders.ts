@@ -70,6 +70,8 @@ export async function createOrder(
       delivery_contact: delivery?.contact ?? null,
       delivery_phone: delivery?.phone ?? null,
       delivery_at: delivery?.at ?? null,
+      delivery_lat: delivery?.lat ?? null,
+      delivery_lng: delivery?.lng ?? null,
       subtotal,
       discount,
       total,
@@ -133,6 +135,39 @@ export async function createOrder(
   return detail
 }
 
+export async function updateOrderDeliveryLocation(
+  db: Kysely<DB>,
+  id: number,
+  lat: number,
+  lng: number,
+  address?: string,
+): Promise<OrderWithItems> {
+  const existing = await db
+    .selectFrom('orders')
+    .select(['id', 'delivery_required'])
+    .where('id', '=', id)
+    .executeTakeFirst()
+  if (!existing) throw new ApiError(404, 'ORDER_NOT_FOUND', '订单不存在')
+  if (!existing.delivery_required) {
+    throw new ApiError(400, 'VALIDATION', '该订单不是送货单')
+  }
+
+  await db
+    .updateTable('orders')
+    .set({
+      delivery_lat: lat,
+      delivery_lng: lng,
+      ...(address ? { delivery_address: address } : {}),
+      updated_at: nowIso(),
+    })
+    .where('id', '=', id)
+    .execute()
+
+  const detail = await getOrder(db, id)
+  if (!detail) throw new ApiError(404, 'ORDER_NOT_FOUND', '订单不存在')
+  return detail
+}
+
 export async function purgeOrder(
   db: Kysely<DB>,
   d1: D1Database,
@@ -177,9 +212,11 @@ export async function getOrder(db: Kysely<DB>, id: number): Promise<OrderWithIte
 
   const itemRows = await db
     .selectFrom('order_items')
-    .selectAll()
-    .where('order_id', '=', id)
-    .orderBy('id', 'asc')
+    .leftJoin('skus', 'skus.id', 'order_items.sku_id')
+    .selectAll('order_items')
+    .select('skus.product_id as product_id')
+    .where('order_items.order_id', '=', id)
+    .orderBy('order_items.id', 'asc')
     .execute()
 
   const paymentRows = await db
@@ -191,7 +228,7 @@ export async function getOrder(db: Kysely<DB>, id: number): Promise<OrderWithIte
     .orderBy('payments.id', 'asc')
     .execute()
 
-  const items: OrderItem[] = itemRows.map((item) => ({ ...item }))
+  const items: OrderItem[] = itemRows.map((item) => ({ ...item, product_id: item.product_id ?? null }))
   const payments: Payment[] = paymentRows.map((payment) => ({
     id: payment.id,
     payment_no: payment.payment_no,
@@ -219,6 +256,8 @@ export async function getOrder(db: Kysely<DB>, id: number): Promise<OrderWithIte
     delivery_at: row.delivery_at,
     delivered_at: row.delivered_at,
     delivery_photo_key: row.delivery_photo_key,
+    delivery_lat: row.delivery_lat,
+    delivery_lng: row.delivery_lng,
     subtotal: row.subtotal,
     discount: row.discount,
     total: row.total,
@@ -299,6 +338,8 @@ export async function listOrders(
     delivery_at: row.delivery_at,
     delivered_at: row.delivered_at,
     delivery_photo_key: row.delivery_photo_key,
+    delivery_lat: row.delivery_lat,
+    delivery_lng: row.delivery_lng,
     subtotal: row.subtotal,
     discount: row.discount,
     total: row.total,

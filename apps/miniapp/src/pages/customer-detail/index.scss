@@ -69,7 +69,13 @@
 
 .address-actions {
   display: flex;
-  gap: 24px;
+  gap: 16px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.address-link-ready {
+  color: var(--sm-primary);
 }
 
 .new-customer {

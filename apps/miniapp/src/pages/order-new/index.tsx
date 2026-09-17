@@ -14,6 +14,7 @@ import { PH } from '../../config/placeholders'
 import { DateTimeField } from '../../components/datetime-field'
 import { Stepper } from '../../components/stepper'
 import { useAuthGuard } from '../../utils/auth'
+import { pickMapLocation, hasCoords, formatPickedAddress } from '../../utils/map'
 import { pickImages, uploadLocalImage } from '../../utils/media'
 import { TAB_PAGE_FOOTER_STYLE } from '../../utils/env'
 import { scanBarcode } from '../../utils/scan'
@@ -86,6 +87,8 @@ export default function OrderNew() {
 
   const [deliveryOn, setDeliveryOn] = useState(false)
   const [address, setAddress] = useState('')
+  const [addressLat, setAddressLat] = useState<number | null>(null)
+  const [addressLng, setAddressLng] = useState<number | null>(null)
   const [contact, setContact] = useState('')
   const [phone, setPhone] = useState('')
   const [deliveryDate, setDeliveryDate] = useState(todayString())
@@ -374,6 +377,8 @@ export default function OrderNew() {
       const primary = list.find((address) => address.is_default === 1) ?? list[0]
       if (primary && deliveryOn) {
         setAddress(primary.address)
+        setAddressLat(primary.lat)
+        setAddressLng(primary.lng)
         setContact(primary.contact_name ?? item.name)
         setPhone(primary.phone ?? item.phone ?? '')
       }
@@ -384,8 +389,19 @@ export default function OrderNew() {
 
   const pickAddress = (item: CustomerAddress) => {
     setAddress(item.address)
+    setAddressLat(item.lat)
+    setAddressLng(item.lng)
     setContact(item.contact_name || customer?.name || '')
     setPhone(item.phone || customer?.phone || '')
+  }
+
+  const pickDeliveryLocation = async () => {
+    const picked = await pickMapLocation(address.trim() || customer?.name || '')
+    if (!picked) return
+    setAddressLat(picked.lat)
+    setAddressLng(picked.lng)
+    // 回填「行政地址 + POI 名称」，避免只剩区级
+    setAddress(formatPickedAddress(picked) || address)
   }
 
   const pickPaymentPhoto = async (entryId: string) => {
@@ -446,6 +462,8 @@ export default function OrderNew() {
           contact: deliveryOn ? contact.trim() : null,
           phone: deliveryOn ? phone.trim() : null,
           at: deliveryOn ? `${deliveryDate} ${deliveryTime}` : null,
+          lat: deliveryOn ? addressLat : null,
+          lng: deliveryOn ? addressLng : null,
         },
         items: cart.map((item) => ({
           sku_id: item.sku.id,
@@ -466,14 +484,25 @@ export default function OrderNew() {
       })
 
       if (customer && deliveryOn && saveAddress && address.trim()) {
-        const exists = addresses.some((item) => item.address === address.trim())
+        const exists = addresses.find((item) => item.address === address.trim())
         if (!exists) {
           try {
             await api.post(`/api/customers/${customer.id}/addresses`, {
               address: address.trim(),
               contact_name: contact.trim() || null,
               phone: phone.trim() || null,
+              lat: addressLat,
+              lng: addressLng,
               is_default: addresses.length === 0,
+            })
+          } catch {
+            // ignore
+          }
+        } else if (addressLat != null && addressLng != null && !hasCoords(exists)) {
+          try {
+            await api.patch(`/api/customers/${customer.id}/addresses/${exists.id}`, {
+              lat: addressLat,
+              lng: addressLng,
             })
           } catch {
             // ignore
@@ -489,6 +518,8 @@ export default function OrderNew() {
       setCustomer(null)
       setAddresses([])
       setAddress('')
+      setAddressLat(null)
+      setAddressLng(null)
       setContact('')
       setPhone('')
       setDeliveryDate(todayString())
@@ -727,7 +758,16 @@ export default function OrderNew() {
                 ))}
               </View>
             )}
-            <Input className="input field" placeholder="送货地址" value={address} onInput={(event) => setAddress(event.detail.value)} />
+            <Input
+              className="input field"
+              placeholder="送货地址（选点后可补门牌等）"
+              value={address}
+              onInput={(event) => setAddress(event.detail.value)}
+            />
+            <Button className="btn btn-ghost full-btn" onClick={pickDeliveryLocation}>
+              地图选点
+              {addressLat != null && addressLng != null ? '（已选坐标）' : ''}
+            </Button>
             <Input className="input field" placeholder="联系人" value={contact} onInput={(event) => setContact(event.detail.value)} />
             <Input className="input field" type="number" maxlength={20} placeholder="联系电话" value={phone} onInput={(event) => setPhone(event.detail.value)} />
             <View className="field-row">

@@ -2,6 +2,48 @@
   padding-bottom: 200px;
 }
 
+.address-link {
+  display: block;
+  word-break: break-all;
+}
+
+.address-link-ready {
+  color: var(--sm-primary);
+}
+
+.delivery-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.delivery-info {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.delivery-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.delivery-label {
+  font-size: 22px;
+  color: var(--sm-ink-3);
+}
+
+.delivery-value {
+  font-size: 28px;
+  line-height: 1.45;
+  word-break: break-all;
+}
+
+.delivery-value.address-link {
+  margin-bottom: 0;
+}
+
 .order-no {
   font-size: 34px;
   font-weight: 600;
@@ -39,18 +81,27 @@
   flex: 1;
 }
 
-.delivery-photo {
+.item-row-link:active {
+  background: var(--sm-primary-soft, #eff6ff);
+}
+
+.delivery-photo-wrap {
   width: 100%;
   height: 360px;
   border-radius: var(--sm-radius-ctl);
-  margin-top: 16px;
+  overflow: hidden;
   background: #f3f4f6;
+}
+
+.delivery-photo {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .full-btn {
   width: 100%;
   text-align: center;
-  margin-top: 20px;
 }
 
 .method-row {

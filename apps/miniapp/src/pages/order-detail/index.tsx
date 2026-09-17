@@ -16,6 +16,7 @@ import {
   yuanToFen,
 } from '../../utils/format'
 import { watermarkPhoto } from '../../utils/watermark'
+import { hasCoords, openMapForNavigation, pickMapLocation, promptMapFallback, formatPickedAddress } from '../../utils/map'
 import './index.scss'
 
 type PayMethod = 'cash' | 'wechat' | 'alipay' | 'other'
@@ -142,6 +143,55 @@ export default function OrderDetailPage() {
     }
   }
 
+  const openAddressMap = async () => {
+    if (!order?.delivery_address) return
+    const result = await openMapForNavigation({
+      lat: order.delivery_lat,
+      lng: order.delivery_lng,
+      address: order.delivery_address,
+      name: order.delivery_address,
+    })
+    if (result !== 'picked-later') return
+    const action = await promptMapFallback(order.delivery_address)
+    if (action !== 'pick') return
+    const picked = await pickMapLocation(order.delivery_address)
+    if (!picked) return
+    const nextAddress = formatPickedAddress(picked) || order.delivery_address
+    try {
+      await api.patch(`/api/orders/${id}/delivery-location`, {
+        lat: picked.lat,
+        lng: picked.lng,
+        address: nextAddress,
+      })
+      if (order.customer_id) {
+        try {
+          const addresses = await api.get<
+            { id: number; address: string }[]
+          >(`/api/customers/${order.customer_id}/addresses`)
+          const matched = addresses.find((item) => item.address === order.delivery_address)
+          if (matched) {
+            // 只补坐标，不覆盖客户档案里已有的详细地址
+            await api.patch(`/api/customers/${order.customer_id}/addresses/${matched.id}`, {
+              lat: picked.lat,
+              lng: picked.lng,
+            })
+          }
+        } catch {
+          // ignore customer address sync failure
+        }
+      }
+      await load()
+      await openMapForNavigation({
+        lat: picked.lat,
+        lng: picked.lng,
+        address: nextAddress,
+        name: nextAddress,
+      })
+    } catch (error) {
+      Taro.showToast({ title: (error as Error).message, icon: 'none' })
+    }
+  }
+
   const purgeOrder = async () => {
     const confirm = await Taro.showModal({
       title: '彻底删除订单',
@@ -207,11 +257,22 @@ export default function OrderDetailPage() {
       <View className="section-title">商品</View>
       <View className="card">
         {order.items.map((item) => (
-          <View key={item.id} className="item-row">
+          <View
+            key={item.id}
+            className={`item-row ${item.product_id ? 'item-row-link' : ''}`}
+            onClick={() => {
+              if (!item.product_id) {
+                Taro.showToast({ title: '商品已删除，无法查看', icon: 'none' })
+                return
+              }
+              Taro.navigateTo({ url: `/pages/product-detail/index?id=${item.product_id}` })
+            }}
+          >
             <View className="item-main">
               <Text>
                 {item.product_name}
                 {item.spec_name ? ` · ${item.spec_name}` : ''}
+                {item.product_id ? ' ›' : ''}
               </Text>
               <Text className="muted">
                 {item.qty}
@@ -226,24 +287,59 @@ export default function OrderDetailPage() {
       {order.delivery_required ? (
         <>
           <View className="section-title">送货</View>
-          <View className="card">
-            <Text>地址：{order.delivery_address || '-'}</Text>
-            <Text className="muted">
-              {order.delivery_contact || ''} {order.delivery_phone || ''}
-            </Text>
-            <Text className="muted">
-              约定：{order.delivery_at || '-'} · 状态：
-              {order.delivery_status === 'delivered' ? `已送达（${formatDateTime(order.delivered_at)}）` : '待送货'}
-            </Text>
+          <View className="card delivery-card">
+            <View className="delivery-info">
+              <View className="delivery-row">
+                <Text className="delivery-label">地址</Text>
+                <Text
+                  className={`delivery-value address-link ${hasCoords({ lat: order.delivery_lat, lng: order.delivery_lng }) || order.delivery_address ? 'address-link-ready' : ''}`}
+                  onClick={openAddressMap}
+                >
+                  {order.delivery_address || '-'}
+                  {order.delivery_address
+                    ? hasCoords({ lat: order.delivery_lat, lng: order.delivery_lng })
+                      ? ' · 导航'
+                      : ' · 点此定位'
+                    : ''}
+                </Text>
+              </View>
+              {order.delivery_contact || order.delivery_phone ? (
+                <View className="delivery-row">
+                  <Text className="delivery-label">联系人</Text>
+                  <Text className="delivery-value muted">
+                    {[order.delivery_contact, order.delivery_phone].filter(Boolean).join(' · ')}
+                  </Text>
+                </View>
+              ) : null}
+              <View className="delivery-row">
+                <Text className="delivery-label">约定</Text>
+                <Text className="delivery-value muted">{order.delivery_at || '-'}</Text>
+              </View>
+              <View className="delivery-row">
+                <Text className="delivery-label">状态</Text>
+                <Text className="delivery-value muted">
+                  {order.delivery_status === 'delivered'
+                    ? `已送达（${formatDateTime(order.delivered_at)}）`
+                    : '待送货'}
+                </Text>
+              </View>
+            </View>
             {order.delivery_photo_key ? (
-              <Image
-                className="delivery-photo"
-                src={fileUrl(order.delivery_photo_key)}
-                mode="aspectFill"
-                onClick={() =>
-                  Taro.previewImage({ current: fileUrl(order.delivery_photo_key), urls: [fileUrl(order.delivery_photo_key)] })
-                }
-              />
+              <View
+                className="delivery-photo-wrap"
+                onClick={() => {
+                  const url = fileUrl(order.delivery_photo_key)
+                  Taro.previewImage({ current: url, urls: [url] })
+                }}
+              >
+                <Image
+                  className="delivery-photo"
+                  src={fileUrl(order.delivery_photo_key)}
+                  mode="aspectFill"
+                  lazyLoad={false}
+                  onError={() => Taro.showToast({ title: '图片加载失败', icon: 'none' })}
+                />
+              </View>
             ) : null}
             {order.delivery_status !== 'delivered' && order.status === 'open' ? (
               <Button className="btn btn-primary full-btn" onClick={deliver}>

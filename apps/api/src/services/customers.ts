@@ -24,7 +24,15 @@ export interface CustomerAddressInput {
   contact_name?: string | null | undefined
   phone?: string | null | undefined
   address: string
+  lat?: number | null | undefined
+  lng?: number | null | undefined
   is_default?: boolean | undefined
+}
+
+export interface CustomerAddressUpdateInput {
+  address?: string | undefined
+  lat?: number | null | undefined
+  lng?: number | null | undefined
 }
 
 const toAddress = (row: {
@@ -34,6 +42,8 @@ const toAddress = (row: {
   contact_name: string | null
   phone: string | null
   address: string
+  lat: number | null
+  lng: number | null
   is_default: number
   created_at: string
   updated_at: string | null
@@ -106,6 +116,8 @@ export async function addCustomerAddress(
       contact_name: input.contact_name ?? null,
       phone: input.phone ?? null,
       address: input.address,
+      lat: input.lat ?? null,
+      lng: input.lng ?? null,
       is_default: makeDefault ? 1 : 0,
       created_at: now,
       updated_at: now,
@@ -114,6 +126,47 @@ export async function addCustomerAddress(
     .executeTakeFirstOrThrow()
 
   if (makeDefault) await syncCustomerPrimary(db, customerId)
+  return toAddress(row)
+}
+
+export async function updateCustomerAddress(
+  db: Kysely<DB>,
+  customerId: number,
+  addressId: number,
+  input: CustomerAddressUpdateInput,
+): Promise<CustomerAddress> {
+  const existing = await db
+    .selectFrom('customer_addresses')
+    .selectAll()
+    .where('id', '=', addressId)
+    .where('customer_id', '=', customerId)
+    .executeTakeFirst()
+  if (!existing) throw new ApiError(404, 'ADDRESS_NOT_FOUND', '地址不存在')
+
+  const now = nowIso()
+  const nextAddress = input.address ?? existing.address
+  const nextLat = input.lat === undefined ? existing.lat : input.lat
+  const nextLng = input.lng === undefined ? existing.lng : input.lng
+
+  await db
+    .updateTable('customer_addresses')
+    .set({
+      address: nextAddress,
+      lat: nextLat,
+      lng: nextLng,
+      updated_at: now,
+    })
+    .where('id', '=', addressId)
+    .where('customer_id', '=', customerId)
+    .execute()
+
+  if (nextAddress !== existing.address) await syncCustomerPrimary(db, customerId)
+
+  const row = await db
+    .selectFrom('customer_addresses')
+    .selectAll()
+    .where('id', '=', addressId)
+    .executeTakeFirstOrThrow()
   return toAddress(row)
 }
 
@@ -255,7 +308,13 @@ export async function getCustomerDetail(db: Kysely<DB>, id: number): Promise<Cus
   const orderIds = orderRows.map((row) => row.id)
 
   const itemRows = orderIds.length
-    ? await db.selectFrom('order_items').selectAll().where('order_id', 'in', orderIds).execute()
+    ? await db
+        .selectFrom('order_items')
+        .leftJoin('skus', 'skus.id', 'order_items.sku_id')
+        .selectAll('order_items')
+        .select('skus.product_id as product_id')
+        .where('order_items.order_id', 'in', orderIds)
+        .execute()
     : []
   const paymentRows = orderIds.length
     ? await db
@@ -274,7 +333,7 @@ export async function getCustomerDetail(db: Kysely<DB>, id: number): Promise<Cus
     if (row.status === 'open') totalUnpaid += remaining
     const items: OrderItem[] = itemRows
       .filter((item) => item.order_id === row.id)
-      .map((item) => ({ ...item }))
+      .map((item) => ({ ...item, product_id: item.product_id ?? null }))
     const payments: Payment[] = paymentRows
       .filter((payment) => payment.order_id === row.id)
       .map((payment) => ({
@@ -303,6 +362,8 @@ export async function getCustomerDetail(db: Kysely<DB>, id: number): Promise<Cus
       delivery_at: row.delivery_at,
       delivered_at: row.delivered_at,
       delivery_photo_key: row.delivery_photo_key,
+      delivery_lat: row.delivery_lat,
+      delivery_lng: row.delivery_lng,
       subtotal: row.subtotal,
       discount: row.discount,
       total: row.total,

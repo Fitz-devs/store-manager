@@ -1,10 +1,18 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
-import { orderCreateSchema, orderDeliverSchema } from '@sm/shared'
+import { deliveryLocationSchema, orderCreateSchema, orderDeliverSchema } from '@sm/shared'
 import type { AppEnv } from '../env'
 import { createStorage } from '../adapters/storage'
 import { ApiError, ok, parseBody, parseQuery } from '../lib/errors'
-import { createOrder, deliverOrder, getOrder, listOrders, purgeOrder, voidOrder } from '../services/orders'
+import {
+  createOrder,
+  deliverOrder,
+  getOrder,
+  listOrders,
+  purgeOrder,
+  updateOrderDeliveryLocation,
+  voidOrder,
+} from '../services/orders'
 
 const router = new Hono<AppEnv>()
 
@@ -51,6 +59,19 @@ router.post('/:id/deliver', async (c) => {
   const id = idSchema.parse(c.req.param('id'))
   const input = await parseBody(c, orderDeliverSchema)
   const order = await deliverOrder(c.get('database').db, id, input)
+  return ok(c, order)
+})
+
+router.patch('/:id/delivery-location', async (c) => {
+  const id = idSchema.parse(c.req.param('id'))
+  const input = await parseBody(c, deliveryLocationSchema)
+  const order = await updateOrderDeliveryLocation(
+    c.get('database').db,
+    id,
+    input.lat,
+    input.lng,
+    input.address,
+  )
   return ok(c, order)
 })
 
