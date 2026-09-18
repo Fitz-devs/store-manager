@@ -205,6 +205,14 @@ export interface ProductCategoriesTable {
   category_id: number
 }
 
+export interface DailyStatsTable {
+  date: string
+  sales_amount: number
+  order_count: number
+  purchase_amount: number
+  updated_at: string | null
+}
+
 export interface DB {
   users: UsersTable
   products: ProductsTable
@@ -223,4 +231,5 @@ export interface DB {
   settings: SettingsTable
   categories: CategoriesTable
   product_categories: ProductCategoriesTable
+  daily_stats: DailyStatsTable
 }

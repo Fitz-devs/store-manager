@@ -15,6 +15,7 @@ export async function exportAll(db: Kysely<DB>) {
     orderItems,
     payments,
     settings,
+    dailyStats,
   ] = await Promise.all([
     db
       .selectFrom('users')
@@ -31,6 +32,7 @@ export async function exportAll(db: Kysely<DB>) {
     db.selectFrom('order_items').selectAll().execute(),
     db.selectFrom('payments').selectAll().execute(),
     db.selectFrom('settings').selectAll().execute(),
+    db.selectFrom('daily_stats').selectAll().execute(),
   ])
 
   return {
@@ -47,5 +49,6 @@ export async function exportAll(db: Kysely<DB>) {
     order_items: orderItems,
     payments,
     settings,
+    daily_stats: dailyStats,
   }
 }

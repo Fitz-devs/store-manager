@@ -13,8 +13,9 @@ import type { StorageAdapter } from '../adapters/storage'
 import { batchCompiled } from '../db/batch'
 import { ApiError } from '../lib/errors'
 import { parseStoredImageKeys } from '../lib/images'
-import { nextPurchaseNo, nowIso } from '../lib/ids'
+import { nextPurchaseNo, nowIso, shanghaiDateString } from '../lib/ids'
 import { applyPurchaseListFilters } from '../lib/list-filters'
+import { buildStatsUpsert, statsDateFromCreatedAt } from './stats'
 
 export interface CheckPriceItem {
   sku_id: number
@@ -140,6 +141,8 @@ export async function createPurchase(
       })
       .compile(),
   )
+
+  statements.push(...buildStatsUpsert(db, shanghaiDateString(new Date(now)), { purchase_amount: totalAmount }))
 
   await batchCompiled(d1, statements)
 
@@ -268,13 +271,16 @@ export async function purgePurchase(
 ): Promise<void> {
   const purchase = await db
     .selectFrom('purchases')
-    .select(['id', 'image_keys'])
+    .select(['id', 'image_keys', 'total_amount', 'created_at'])
     .where('id', '=', id)
     .executeTakeFirst()
   if (!purchase) throw new ApiError(404, 'PURCHASE_NOT_FOUND', '入库单不存在')
   await batchCompiled(d1, [
     db.deleteFrom('purchase_items').where('purchase_id', '=', id).compile(),
     db.deleteFrom('purchases').where('id', '=', id).compile(),
+    ...buildStatsUpsert(db, statsDateFromCreatedAt(purchase.created_at), {
+      purchase_amount: -purchase.total_amount,
+    }),
   ])
   for (const key of parseStoredImageKeys(purchase.image_keys)) {
     await storage.delete(key).catch(() => undefined)

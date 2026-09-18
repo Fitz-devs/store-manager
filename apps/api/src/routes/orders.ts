@@ -77,7 +77,8 @@ router.patch('/:id/delivery-location', async (c) => {
 
 router.post('/:id/void', async (c) => {
   const id = idSchema.parse(c.req.param('id'))
-  const order = await voidOrder(c.get('database').db, id)
+  const { db, d1 } = c.get('database')
+  const order = await voidOrder(db, d1, id)
   return ok(c, order)
 })
 

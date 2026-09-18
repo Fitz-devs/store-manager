@@ -12,8 +12,9 @@ import type { DB } from '../db/schema'
 import type { StorageAdapter } from '../adapters/storage'
 import { batchCompiled } from '../db/batch'
 import { ApiError } from '../lib/errors'
-import { nextOrderNo, nextPaymentNo, nowIso } from '../lib/ids'
+import { nextOrderNo, nextPaymentNo, nowIso, shanghaiDateString } from '../lib/ids'
 import { applyOrderListFilters } from '../lib/list-filters'
+import { buildStatsUpsert, openOrderStatsDelta } from './stats'
 import { loadSkuMeta } from './purchases'
 
 export async function createOrder(
@@ -130,6 +131,8 @@ export async function createOrder(
     )
   }
 
+  statements.push(...buildStatsUpsert(db, shanghaiDateString(new Date(now)), { sales_amount: total, order_count: 1 }))
+
   await batchCompiled(d1, statements)
   const detail = await getOrder(db, order.id)
   if (!detail) throw new ApiError(500, 'CREATE_FAILED', '订单创建失败')
@@ -177,7 +180,7 @@ export async function purgeOrder(
 ): Promise<void> {
   const order = await db
     .selectFrom('orders')
-    .select(['id', 'delivery_photo_key'])
+    .select(['id', 'status', 'total', 'created_at', 'delivery_photo_key'])
     .where('id', '=', id)
     .executeTakeFirst()
   if (!order) throw new ApiError(404, 'ORDER_NOT_FOUND', '订单不存在')
@@ -191,6 +194,8 @@ export async function purgeOrder(
     db.deleteFrom('order_items').where('order_id', '=', id).compile(),
     db.deleteFrom('orders').where('id', '=', id).compile(),
   ]
+  const delta = openOrderStatsDelta(order)
+  if (delta) statements.push(...buildStatsUpsert(db, delta.date, delta.delta))
   await batchCompiled(d1, statements)
   const photoKeys = [
     order.delivery_photo_key,
@@ -365,15 +370,20 @@ export async function deliverOrder(
   return detail
 }
 
-export async function voidOrder(db: Kysely<DB>, id: number): Promise<OrderWithItems> {
+export async function voidOrder(db: Kysely<DB>, d1: D1Database, id: number): Promise<OrderWithItems> {
   const order = await db.selectFrom('orders').selectAll().where('id', '=', id).executeTakeFirst()
   if (!order) throw new ApiError(404, 'ORDER_NOT_FOUND', '订单不存在')
   if (order.status === 'void') throw new ApiError(400, 'ORDER_VOID', '订单已作废')
-  await db
-    .updateTable('orders')
-    .set({ status: 'void', updated_at: nowIso() })
-    .where('id', '=', id)
-    .execute()
+  const delta = openOrderStatsDelta(order)
+  const statements = [
+    db
+      .updateTable('orders')
+      .set({ status: 'void', updated_at: nowIso() })
+      .where('id', '=', id)
+      .compile(),
+    ...(delta ? buildStatsUpsert(db, delta.date, delta.delta) : []),
+  ]
+  await batchCompiled(d1, statements)
   const detail = await getOrder(db, id)
   if (!detail) throw new ApiError(500, 'UPDATE_FAILED', '更新失败')
   return detail

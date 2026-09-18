@@ -9,10 +9,6 @@ export function shanghaiDateString(now = new Date()): string {
   return new Date(now.getTime() + 8 * 3600 * 1000).toISOString().slice(0, 10)
 }
 
-export function shanghaiDayStartUtc(now = new Date()): string {
-  return new Date(`${shanghaiDateString(now)}T00:00:00+08:00`).toISOString()
-}
-
 export function uuid(): string {
   return crypto.randomUUID()
 }

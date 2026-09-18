@@ -3,31 +3,20 @@ import { sql } from 'kysely'
 import type { HomeReport } from '@sm/shared'
 import type { AppEnv } from '../env'
 import { ok } from '../lib/errors'
-import { shanghaiDayStartUtc } from '../lib/ids'
+import { shanghaiDateString } from '../lib/ids'
+import { requireOwner } from '../middleware/auth'
 import { listOrders } from '../services/orders'
+import { rebuildDailyStats } from '../services/stats'
 import { exportAll } from '../services/backup'
 
 const router = new Hono<AppEnv>()
 
 router.get('/home', async (c) => {
   const { db } = c.get('database')
-  const dayStart = shanghaiDayStartUtc()
+  const today = shanghaiDateString()
 
-  const [salesRow, purchaseRow, unpaidRow, deliveryRow, stockRow, recent] = await Promise.all([
-    db
-      .selectFrom('orders')
-      .select([
-        sql<number>`COALESCE(SUM(total), 0)`.as('amount'),
-        sql<number>`COUNT(*)`.as('count'),
-      ])
-      .where('status', '=', 'open')
-      .where('created_at', '>=', dayStart)
-      .executeTakeFirst(),
-    db
-      .selectFrom('purchases')
-      .select([sql<number>`COALESCE(SUM(total_amount), 0)`.as('amount')])
-      .where('created_at', '>=', dayStart)
-      .executeTakeFirst(),
+  const [statsRow, unpaidRow, deliveryRow, stockRow, recent] = await Promise.all([
+    db.selectFrom('daily_stats').selectAll().where('date', '=', today).executeTakeFirst(),
     db
       .selectFrom('orders')
       .select([
@@ -53,9 +42,9 @@ router.get('/home', async (c) => {
   ])
 
   const report: HomeReport = {
-    today_sales: Number(salesRow?.amount ?? 0),
-    today_order_count: Number(salesRow?.count ?? 0),
-    today_purchase_amount: Number(purchaseRow?.amount ?? 0),
+    today_sales: Number(statsRow?.sales_amount ?? 0),
+    today_order_count: Number(statsRow?.order_count ?? 0),
+    today_purchase_amount: Number(statsRow?.purchase_amount ?? 0),
     unpaid_total: Number(unpaidRow?.amount ?? 0),
     unpaid_order_count: Number(unpaidRow?.count ?? 0),
     pending_delivery_count: Number(deliveryRow?.count ?? 0),
@@ -63,6 +52,12 @@ router.get('/home', async (c) => {
     recent_orders: recent.items,
   }
   return ok(c, report)
+})
+
+router.post('/stats/rebuild', requireOwner, async (c) => {
+  const { db, d1 } = c.get('database')
+  const result = await rebuildDailyStats(db, d1)
+  return ok(c, result)
 })
 
 router.get('/export', async (c) => {
