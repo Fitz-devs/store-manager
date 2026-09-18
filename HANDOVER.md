@@ -252,4 +252,4 @@ cd apps/api && bun run deploy            # 构建 H5 + 部署 Worker
 - 单元测试：30 项通过（金额换算、单位价归一、涨跌幅、密码哈希、条码提供方解析、OCR 草稿）
 - UI 验证：无头浏览器实际渲染验证（登录、开单、客户选择/新建、地址回显、付款、商品录入、日期范围等）
 - 构建：H5 构建无警告；小程序 `bun run build:weapp` 可出包
-- 线上：迁移 0001~0013 已应用（含 0010 去 prizes+全库去外键、0011 条码缓存去图、0012 回款凭证列、0013 drop barcode_cache）；Worker + Web 已部署，`/status` 正常。**0014（drop purchases.kind / payments.purchase_id）待 migrate:remote**
+- 线上：迁移 0001~0016 已全部应用（2026-09-19 部署时核实，remote 无待迁移）；Worker + Web 已部署，`/status` 正常。最近版本 cbe8370c

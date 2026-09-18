@@ -350,11 +350,13 @@ export async function deliverOrder(
   db: Kysely<DB>,
   id: number,
   input: { photo_key?: string | null | undefined; delivered_at?: string | undefined; note?: string | null | undefined },
+  storage?: StorageAdapter,
 ): Promise<OrderWithItems> {
   const order = await db.selectFrom('orders').selectAll().where('id', '=', id).executeTakeFirst()
   if (!order) throw new ApiError(404, 'ORDER_NOT_FOUND', '订单不存在')
   if (order.status === 'void') throw new ApiError(400, 'ORDER_VOID', '订单已作废')
   const now = nowIso()
+  const previousPhotoKey = order.delivery_photo_key ?? null
   await db
     .updateTable('orders')
     .set({
@@ -365,6 +367,9 @@ export async function deliverOrder(
     })
     .where('id', '=', id)
     .execute()
+  if (storage && previousPhotoKey && previousPhotoKey !== input.photo_key) {
+    await storage.delete(previousPhotoKey).catch(() => undefined)
+  }
   const detail = await getOrder(db, id)
   if (!detail) throw new ApiError(500, 'UPDATE_FAILED', '更新失败')
   return detail

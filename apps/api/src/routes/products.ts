@@ -75,7 +75,12 @@ router.get('/:id', async (c) => {
 router.patch('/:id', async (c) => {
   const id = idSchema.parse(c.req.param('id'))
   const input = await parseBody(c, productUpdateSchema)
-  const product = await updateProduct(c.get('database').db, id, input)
+  const product = await updateProduct(
+    c.get('database').db,
+    id,
+    input,
+    createStorage(c.env.BUCKET),
+  )
   if (!product) throw new ApiError(404, 'PRODUCT_NOT_FOUND', '商品不存在')
   return ok(c, product)
 })

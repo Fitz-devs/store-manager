@@ -264,6 +264,17 @@ export const paymentCreateSchema = z.object({
   received_at: z.string().max(40).optional(),
 })
 
+export const paymentUpdateSchema = paymentCreateSchema
+  .omit({ order_id: true })
+  .partial()
+
+export const purchaseUpdateSchema = z.object({
+  supplier_name: nullableText(50),
+  ordered_at: z.string().min(1).max(40),
+  note: nullableText(500),
+  image_keys: z.array(z.string().max(300)).max(10).optional(),
+})
+
 export const ocrRequestSchema = z.object({
   image_key: z.string().min(1).max(300),
 })
@@ -298,6 +309,8 @@ export type SkuUpdateInput = z.infer<typeof skuUpdateSchema>
 export type PurchaseCreateInput = z.infer<typeof purchaseCreateSchema>
 export type OrderCreateInput = z.infer<typeof orderCreateSchema>
 export type PaymentCreateInput = z.infer<typeof paymentCreateSchema>
+export type PaymentUpdateInput = z.infer<typeof paymentUpdateSchema>
+export type PurchaseUpdateInput = z.infer<typeof purchaseUpdateSchema>
 export type CustomerInput = z.infer<typeof customerInputSchema>
 export type CustomerAddressInput = z.infer<typeof customerAddressInputSchema>
 export type CustomerAddressUpdateInput = z.infer<typeof customerAddressUpdateSchema>

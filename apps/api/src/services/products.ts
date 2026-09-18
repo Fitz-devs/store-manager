@@ -799,6 +799,7 @@ export async function updateProduct(
   db: Kysely<DB>,
   id: number,
   patch: ProductPatch,
+  storage?: StorageAdapter,
 ): Promise<Product | null> {
   const values: Record<string, unknown> = { updated_at: nowIso() }
   if (patch.name !== undefined) values.name = patch.name
@@ -810,6 +811,8 @@ export async function updateProduct(
   if (patch.notes !== undefined) values.notes = patch.notes
   if (patch.image_key !== undefined) values.image_key = patch.image_key
   if (patch.status !== undefined) values.status = patch.status
+  const previousImageKey =
+    patch.image_key !== undefined ? await loadProductImageKey(db, id) : null
   await db
     .updateTable('products')
     .set(values as never)
@@ -818,10 +821,22 @@ export async function updateProduct(
   if (patch.category_ids !== undefined) {
     await syncProductCategories(db, id, patch.category_ids)
   }
+  if (storage && previousImageKey && previousImageKey !== patch.image_key) {
+    await storage.delete(previousImageKey).catch(() => undefined)
+  }
   const row = await db.selectFrom('products').selectAll().where('id', '=', id).executeTakeFirst()
   if (!row) return null
   const ids = (await loadCategoryIds(db, [id])).get(id) ?? []
   return toProduct(row, ids)
+}
+
+async function loadProductImageKey(db: Kysely<DB>, id: number): Promise<string | null> {
+  const row = await db
+    .selectFrom('products')
+    .select('image_key')
+    .where('id', '=', id)
+    .executeTakeFirst()
+  return row?.image_key ?? null
 }
 
 async function buildProductTreeDeletion(db: Kysely<DB>, id: number): Promise<CompiledQuery[]> {

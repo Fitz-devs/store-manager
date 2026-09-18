@@ -58,7 +58,12 @@ router.get('/:id', async (c) => {
 router.post('/:id/deliver', async (c) => {
   const id = idSchema.parse(c.req.param('id'))
   const input = await parseBody(c, orderDeliverSchema)
-  const order = await deliverOrder(c.get('database').db, id, input)
+  const order = await deliverOrder(
+    c.get('database').db,
+    id,
+    input,
+    createStorage(c.env.BUCKET),
+  )
   return ok(c, order)
 })
 

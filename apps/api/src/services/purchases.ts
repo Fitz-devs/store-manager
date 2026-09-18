@@ -5,6 +5,7 @@ import type {
   Purchase,
   PurchaseCreateInput,
   PurchaseItem,
+  PurchaseUpdateInput,
   PurchaseWithItems,
 } from '@sm/shared'
 import { calcAmount, normalizeUnitPrice, priceChangeRatio } from '@sm/shared'
@@ -285,4 +286,41 @@ export async function purgePurchase(
   for (const key of parseStoredImageKeys(purchase.image_keys)) {
     await storage.delete(key).catch(() => undefined)
   }
+}
+
+export async function updatePurchase(
+  db: Kysely<DB>,
+  d1: D1Database,
+  id: number,
+  patch: PurchaseUpdateInput,
+  storage?: StorageAdapter,
+): Promise<PurchaseWithItems> {
+  const existing = await db
+    .selectFrom('purchases')
+    .select(['id', 'image_keys'])
+    .where('id', '=', id)
+    .executeTakeFirst()
+  if (!existing) throw new ApiError(404, 'PURCHASE_NOT_FOUND', '入库单不存在')
+
+  const values: Record<string, unknown> = {}
+  if (patch.supplier_name !== undefined) values.supplier_name = patch.supplier_name
+  if (patch.note !== undefined) values.note = patch.note
+  if (patch.ordered_at !== undefined) values.ordered_at = patch.ordered_at
+  if (patch.image_keys !== undefined) {
+    values.image_keys = patch.image_keys.length ? JSON.stringify(patch.image_keys) : null
+  }
+
+  await db.updateTable('purchases').set(values as never).where('id', '=', id).execute()
+
+  if (storage && patch.image_keys !== undefined) {
+    const previousKeys = new Set(parseStoredImageKeys(existing.image_keys))
+    const nextKeys = new Set(patch.image_keys)
+    for (const oldKey of previousKeys) {
+      if (!nextKeys.has(oldKey)) await storage.delete(oldKey).catch(() => undefined)
+    }
+  }
+
+  const detail = await getPurchase(db, id)
+  if (!detail) throw new ApiError(500, 'UPDATE_FAILED', '更新失败')
+  return detail
 }
