@@ -33,7 +33,9 @@ export function formatDateTime(iso: string | null | undefined): string {
 
 export function formatDay(iso: string | null | undefined): string {
   if (!iso) return '-'
-  return iso.slice(0, 10)
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return iso
+  return new Date(date.getTime() + 8 * 3600 * 1000).toISOString().slice(0, 10)
 }
 
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {

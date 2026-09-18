@@ -3,6 +3,7 @@ import { cors } from 'hono/cors'
 import type { Bindings, AppEnv } from './env'
 import { createDb } from './db'
 import { ApiError } from './lib/errors'
+import { shanghaiDateString } from './lib/ids'
 import { authMiddleware } from './middleware/auth'
 import authRoutes from './routes/auth'
 import userRoutes from './routes/users'
@@ -141,7 +142,7 @@ app.onError((err, c) => {
 async function backupToR2(env: Bindings): Promise<void> {
   const { db } = createDb(env.DB)
   const data = await exportAll(db)
-  const key = `backups/${new Date().toISOString().slice(0, 10)}.json`
+  const key = `backups/${shanghaiDateString()}.json`
   await env.BUCKET.put(key, JSON.stringify(data), {
     httpMetadata: { contentType: 'application/json' },
   })

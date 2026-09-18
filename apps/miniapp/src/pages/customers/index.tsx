@@ -7,7 +7,7 @@ import { EmptyState } from '../../components/empty-state'
 import { ListLoading } from '../../components/list-loading'
 import { SearchBox } from '../../components/search-box'
 import { useAuthGuard } from '../../utils/auth'
-import { formatFen } from '../../utils/format'
+import { formatDay, formatFen } from '../../utils/format'
 import './index.scss'
 
 export default function Customers() {
@@ -98,7 +98,7 @@ export default function Customers() {
           <Text className="muted">{customer.address || '未填地址'}</Text>
           <Text className="muted">
             {customer.order_count} 单
-            {customer.last_order_at ? ` · 最近 ${customer.last_order_at.slice(0, 10)}` : ''}
+            {customer.last_order_at ? ` · 最近 ${formatDay(customer.last_order_at)}` : ''}
           </Text>
         </View>
       ))}
