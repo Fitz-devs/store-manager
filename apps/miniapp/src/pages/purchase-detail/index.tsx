@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import Taro, { useDidShow, useRouter } from '@tarojs/taro'
+import Taro, { useDidShow, useRouter, useShareAppMessage } from '@tarojs/taro'
 import { Button, Image, Text, View } from '@tarojs/components'
 import type { PurchaseWithItems } from '@sm/shared'
 import { api, fileUrl } from '../../api/client'
@@ -38,7 +38,7 @@ export default function PurchaseDetail() {
   })
 
   // 微信小程序转发给同事
-  onShareAppMessage = () => {
+  useShareAppMessage(() => {
     if (!purchase) {
       return { title: '店铺管家', path: '/pages/purchases/index' }
     }
@@ -48,7 +48,7 @@ export default function PurchaseDetail() {
       title,
       path: `/pages/purchase-detail/index?id=${purchase.id}`,
     }
-  }
+  })
 
   const addImage = async () => {
     try {

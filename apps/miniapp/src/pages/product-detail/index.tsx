@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import Taro, { useDidShow, useRouter } from '@tarojs/taro'
+import Taro, { useDidShow, useRouter, useShareAppMessage } from '@tarojs/taro'
 import { Button, Image, Input, Text, View } from '@tarojs/components'
 import type { PriceType, ProductDetail, SkuWithBarcodes } from '@sm/shared'
 import { api, fileUrl } from '../../api/client'
@@ -114,7 +114,7 @@ export default function ProductDetailPage() {
   })
 
   // 微信小程序转发给同事
-  onShareAppMessage = () => {
+  useShareAppMessage(() => {
     if (!detail) {
       return { title: '店铺管家', path: '/pages/products/index' }
     }
@@ -123,7 +123,7 @@ export default function ProductDetailPage() {
       title,
       path: `/pages/product-detail/index?id=${detail.product.id}`,
     }
-  }
+  })
 
   const beginSensitive = (skuId: number) => {
     setHoldSkuId(skuId)

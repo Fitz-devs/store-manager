@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import Taro, { useDidShow, useRouter } from '@tarojs/taro'
+import Taro, { useDidShow, useRouter, useShareAppMessage } from '@tarojs/taro'
 import { Button, Canvas, Image, Input, Text, View } from '@tarojs/components'
 import type { OrderWithItems, User } from '@sm/shared'
 import { api, fileUrl, getUser } from '../../api/client'
@@ -61,7 +61,7 @@ export default function OrderDetailPage() {
   })
 
   // 微信小程序转发给同事
-  onShareAppMessage = () => {
+  useShareAppMessage(() => {
     if (!order) {
       return { title: '店铺管家', path: '/pages/orders/index' }
     }
@@ -71,7 +71,7 @@ export default function OrderDetailPage() {
       title,
       path: `/pages/order-detail/index?id=${order.id}`,
     }
-  }
+  })
 
   const deliver = async () => {
     if (!order) return

@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import Taro, { useDidShow, useReachBottom, useRouter } from '@tarojs/taro'
+import Taro, { useDidShow, useReachBottom, useRouter, useShareAppMessage } from '@tarojs/taro'
 import { Button, Input, Text, Textarea, View } from '@tarojs/components'
 import type { CustomerDetail, Order } from '@sm/shared'
 import { api } from '../../api/client'
@@ -87,7 +87,7 @@ export default function CustomerDetailPage() {
   })
 
   // 微信小程序转发给同事
-  onShareAppMessage = () => {
+  useShareAppMessage(() => {
     if (!detail) {
       return { title: '店铺管家', path: '/pages/customers/index' }
     }
@@ -99,7 +99,7 @@ export default function CustomerDetailPage() {
       title,
       path: `/pages/customer-detail/index?id=${detail.id}`,
     }
-  }
+  })
 
   const resetAddressForm = () => {
     setAddrLabel('')
