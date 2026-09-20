@@ -349,6 +349,29 @@ export interface OcrFromRowResult {
   link_id: number | null
 }
 
+export interface MatchOcrSkuHit {
+  sku_id: number
+  product_id: number
+  product_name: string
+  sale_unit: string
+  spec_name: string | null
+  retail_price: number | null
+  friend_price: number | null
+  latest_purchase_price: number | null
+  matched_code: string | null
+  /** 商品状态 active|archived，下架商品条码仍可命中 */
+  product_status: string
+  /** 规格状态 active|archived */
+  sku_status: string
+}
+
+export interface MatchOcrRowResult {
+  status: 'matched' | 'missing'
+  match_source: 'box_code' | 'unit_code' | 'none'
+  hit: MatchOcrSkuHit | null
+  candidates: MatchOcrSkuHit[]
+}
+
 export interface HomeReport {
   today_sales: number
   today_order_count: number

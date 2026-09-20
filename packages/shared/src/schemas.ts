@@ -255,6 +255,11 @@ export const orderDeliverSchema = z.object({
   note: nullableText(200),
 })
 
+export const orderUpdateSchema = z.object({
+  note: nullableText(500),
+  delivery_photo_key: nullableText(300),
+})
+
 export const paymentCreateSchema = z.object({
   order_id: id,
   method: z.enum(PAYMENT_METHODS),
@@ -270,7 +275,7 @@ export const paymentUpdateSchema = paymentCreateSchema
 
 export const purchaseUpdateSchema = z.object({
   supplier_name: nullableText(50),
-  ordered_at: z.string().min(1).max(40),
+  ordered_at: z.string().min(1).max(40).optional(),
   note: nullableText(500),
   image_keys: z.array(z.string().max(300)).max(10).optional(),
 })
@@ -288,6 +293,21 @@ export const ocrFromRowSchema = z.object({
   spec_hint: nullableText(80),
   sale_unit: z.string().trim().min(1).max(10).default('箱'),
 })
+
+/** OCR 自动匹配：仅商品码，不做品名扫描 */
+export const matchOcrSchema = z.object({
+  rows: z
+    .array(
+      z.object({
+        box_code: z.string().trim().min(1).max(64).nullable().optional(),
+        unit_code: z.string().trim().min(1).max(64).nullable().optional(),
+      }),
+    )
+    .min(1)
+    .max(100),
+})
+
+export type MatchOcrInput = z.infer<typeof matchOcrSchema>
 
 export const idParamSchema = z.object({
   id,
@@ -311,6 +331,7 @@ export type OrderCreateInput = z.infer<typeof orderCreateSchema>
 export type PaymentCreateInput = z.infer<typeof paymentCreateSchema>
 export type PaymentUpdateInput = z.infer<typeof paymentUpdateSchema>
 export type PurchaseUpdateInput = z.infer<typeof purchaseUpdateSchema>
+export type OrderUpdateInput = z.infer<typeof orderUpdateSchema>
 export type CustomerInput = z.infer<typeof customerInputSchema>
 export type CustomerAddressInput = z.infer<typeof customerAddressInputSchema>
 export type CustomerAddressUpdateInput = z.infer<typeof customerAddressUpdateSchema>

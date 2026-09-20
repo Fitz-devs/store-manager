@@ -4,6 +4,7 @@ import {
   barcodeInputSchema,
   linkCreateSchema,
   listQuerySchema,
+  matchOcrSchema,
   ocrFromRowSchema,
   productCreateSchema,
   productUpdateSchema,
@@ -24,6 +25,7 @@ import {
   purgeProduct,
   updateProduct,
 } from '../services/products'
+import { matchOcrRows } from '../services/match-ocr'
 
 const router = new Hono<AppEnv>()
 
@@ -63,6 +65,12 @@ router.post('/from-ocr-row', async (c) => {
   const { db, d1 } = c.get('database')
   const result = await createProductsFromOcrRow(db, d1, createStorage(c.env.BUCKET), input, c.get('user').id)
   return ok(c, result, 201)
+})
+
+router.post('/match-ocr', async (c) => {
+  const input = await parseBody(c, matchOcrSchema)
+  const results = await matchOcrRows(c.get('database').db, input.rows)
+  return ok(c, { results })
 })
 
 router.get('/:id', async (c) => {

@@ -533,6 +533,8 @@ export async function createProductsFromOcrRow(
 
   const price = input.unit_price_fen ?? null
   const baseName = input.name.trim()
+  // 与 product-edit / check-prices 一致：latest_purchase_price 存「件均价」
+  const boxPurchaseFen = price === null ? null : Math.round(price / Math.max(1, input.conversion))
   const boxDetail = await createProduct(
     db,
     d1,
@@ -544,7 +546,7 @@ export async function createProductsFromOcrRow(
         retail_price: 0,
         friend_price: null,
       },
-      purchase_price: price,
+      purchase_price: boxPurchaseFen,
       barcodes: boxCode ? [{ code: boxCode, is_primary: true }] : [],
     },
     operatorId,
