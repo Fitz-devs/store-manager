@@ -12,6 +12,12 @@ export function fenToYuan(fen: number | null | undefined): string {
   return (Math.round(fen) / 100).toFixed(2)
 }
 
+/** 展示用元字符串：统一两位小数（42 → 42.00） */
+export function formatYuanDisplay(value: number | string | null | undefined): string {
+  if (value === null || value === undefined || value === '') return '0.00'
+  return fenToYuan(yuanToFen(value))
+}
+
 export function formatFen(fen: number | null | undefined): string {
   if (fen === null || fen === undefined) return '-'
   return `¥${fenToYuan(fen)}`

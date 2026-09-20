@@ -669,7 +669,7 @@ export default function ProductEdit() {
           brand: brand.trim() || null,
           notes: notes.trim() || null,
           image_key: imageKey || null,
-          purchase_price: purchasePrice ? yuanToFen(purchasePrice) : null,
+          purchase_price: basePurchaseFen,
           sku: {
             spec_name: null,
             sale_unit: saleUnit.trim() || '件',
@@ -696,15 +696,14 @@ export default function ProductEdit() {
         if (router.params.from === 'purchase') {
           try {
             const prev = Taro.getStorageSync('sm_purchase_bind_row') as
-              | { rowIndex?: number; pending?: boolean }
+              | { rowId?: string; rowIndex?: number; pending?: boolean }
               | ''
               | undefined
-            const rowIndex =
-              typeof prev === 'object' && prev && typeof prev.rowIndex === 'number'
-                ? prev.rowIndex
-                : Number(router.params.rowIndex ?? '-1')
+            const rowId =
+              (typeof prev === 'object' && prev && typeof prev.rowId === 'string' && prev.rowId) ||
+              (typeof router.params.rowId === 'string' ? router.params.rowId : '')
             Taro.setStorageSync('sm_purchase_bind_row', {
-              rowIndex,
+              rowId,
               pending: true,
               sku_id: sku?.id ?? null,
               productName: created.product.name,
@@ -1188,6 +1187,43 @@ export default function ProductEdit() {
 
       {step === 3 && (
         <>
+          {editId && detail && (
+            <View className="card">
+              <View className="row-between">
+                <Text className="field-label">在售状态</Text>
+                <Switch
+                  checked={detail.product.status === 'active'}
+                  onChange={async (event) => {
+                    const next = event.detail.value ? 'active' : 'archived'
+                    const label = next === 'active' ? '上架' : '下架'
+                    if (next === 'archived') {
+                      const confirm = await Taro.showModal({
+                        title: '下架商品',
+                        content: '下架后商品列表默认不显示，开单搜索也不会出现；条码仍可能被入库匹配到，会标记为「已下架」。确定吗？',
+                      })
+                      if (!confirm.confirm) return
+                    }
+                    try {
+                      await api.patch(`/api/products/${editId}`, { status: next })
+                      setDetail({
+                        ...detail,
+                        product: { ...detail.product, status: next },
+                      })
+                      Taro.setStorageSync('sm_products_dirty', 1)
+                      Taro.showToast({ title: `已${label}`, icon: 'success' })
+                    } catch (error) {
+                      Taro.showToast({ title: (error as Error).message || '操作失败', icon: 'none' })
+                    }
+                  }}
+                />
+              </View>
+              <Text className="muted">
+                {detail.product.status === 'active'
+                  ? '当前在售：列表与开单可检索'
+                  : '当前已下架：商品列表需打开「已下架」筛选才能看到；入库条码匹配会显示「已下架」标识'}
+              </Text>
+            </View>
+          )}
           <View className="card">
             <View className="field">
               <Text className="field-label">别名</Text>

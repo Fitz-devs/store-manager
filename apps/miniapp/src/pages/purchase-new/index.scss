@@ -112,14 +112,23 @@
 
 .inline-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 16px;
+  align-items: center;
 }
 
 .small-btn {
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 140px;
   text-align: center;
   padding: 12px 0;
   font-size: 26px;
+}
+
+/* H5：确保行内按钮可点区域完整 */
+.inline-actions .btn,
+.inline-actions taro-button-core.btn {
+  pointer-events: auto;
 }
 
 .item-name {
@@ -251,4 +260,100 @@
   color: #b45309;
   font-size: 20px;
   margin-top: 4px;
+}
+
+/* 手动检索弹框：必须醒目，避免行内输入被忽略 */
+.search-modal-mask {
+  position: fixed;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1000;
+  background: rgba(15, 23, 42, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+}
+
+.search-modal {
+  width: 100%;
+  max-width: 640px;
+  max-height: 80vh;
+  overflow-y: auto;
+  background: #fff;
+  border-radius: 20px;
+  padding: 28px 24px 20px;
+  box-sizing: border-box;
+}
+
+.search-modal-title {
+  font-size: 32px;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.search-modal-desc {
+  display: block;
+  font-size: 24px;
+  color: #64748b;
+  line-height: 1.5;
+  margin-bottom: 20px;
+}
+
+.search-modal-input-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.search-modal-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.search-modal-btn {
+  flex: 0 0 auto;
+  min-width: 140px;
+  text-align: center;
+}
+
+.search-modal-list {
+  margin-top: 16px;
+  border-top: 1px solid #eef0f3;
+}
+
+.search-modal-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 4px;
+  border-bottom: 1px solid #eef0f3;
+}
+
+.search-modal-item-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.search-modal-item-name {
+  font-size: 28px;
+  font-weight: 500;
+}
+
+.search-modal-item-action {
+  color: #2563eb;
+  font-size: 26px;
+  flex-shrink: 0;
+}
+
+.search-modal-empty {
+  display: block;
+  margin-top: 20px;
+  font-size: 24px;
 }

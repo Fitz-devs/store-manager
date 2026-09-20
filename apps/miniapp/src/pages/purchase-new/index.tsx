@@ -2,18 +2,20 @@ import { useRef, useState } from 'react'
 import Taro, { useDidShow, useRouter } from '@tarojs/taro'
 import { Button, Image, Input, Text, View } from '@tarojs/components'
 import type {
+  MatchOcrRowResult,
   OcrDraft,
   OcrFromRowResult,
   OcrHeader,
   ProductDetail,
   ProductListItem,
 } from '@sm/shared'
+import { resolvePurchasePriceCompare } from '../../utils/priceCompare'
 import { api, fileUrl } from '../../api/client'
 import { DateField } from '../../components/date-field'
 import { useAuthGuard } from '../../utils/auth'
 import { pickImages, uploadLocalImage, type PickSource } from '../../utils/media'
 import { scanBarcode } from '../../utils/scan'
-import { fenToYuan, formatFen, todayString, yuanToFen } from '../../utils/format'
+import { fenToYuan, formatFen, formatYuanDisplay, todayString, yuanToFen } from '../../utils/format'
 import { findLowPriceIssues, promptAfterPurchaseLowPrice } from '../../utils/priceGuard'
 import './index.scss'
 
@@ -34,7 +36,64 @@ interface ItemRow {
   friend_price?: number | null
 }
 
+/** 同 sku 合并：数量相加、金额相加，进货价=金额/数量（进X送X 不落库，只摊价） */
+function blendSameSkuItems(items: ItemRow[]): ItemRow[] {
+  const map = new Map<number, { item: ItemRow; qty: number; amountFen: number; merged: boolean }>()
+  for (const item of items) {
+    const qty = Number(item.qty) || 0
+    const priceFen =
+      item.unit_price === '' || item.unit_price === null || item.unit_price === undefined
+        ? 0
+        : yuanToFen(String(item.unit_price))
+    const amountFen = Math.round(priceFen) * qty
+    const prev = map.get(item.sku_id)
+    if (!prev) {
+      map.set(item.sku_id, { item, qty, amountFen, merged: false })
+    } else {
+      map.set(item.sku_id, {
+        item: prev.item,
+        qty: prev.qty + qty,
+        amountFen: prev.amountFen + amountFen,
+        merged: true,
+      })
+    }
+  }
+  return [...map.values()].map(({ item, qty, amountFen }) => ({
+    ...item,
+    qty: String(qty),
+    unit_price: qty > 0 ? fenToYuan(Math.round(amountFen / qty)) : item.unit_price,
+  }))
+}
+
+function hasSkuDuplication(items: Array<{ sku_id: number }>): boolean {
+  const seen = new Set<number>()
+  for (const item of items) {
+    if (seen.has(item.sku_id)) return true
+    seen.add(item.sku_id)
+  }
+  return false
+}
+
+interface AiPurchaseDraftItem {
+  sku_id: number
+  productName: string
+  specName: string | null
+  unit_name: string
+  conversion: number
+  qty: number
+  unit_price_fen: number
+}
+
+interface AiPurchaseDraft {
+  supplier_name: string | null
+  ordered_at: string
+  note: string | null
+  items: AiPurchaseDraftItem[]
+}
+
 interface OcrRowState {
+  /** 稳定行 ID：忽略/自动匹配回写都按它，避免删行后下标错位 */
+  rowId: string
   box_code: string | null
   unit_code: string | null
   name: string
@@ -52,10 +111,16 @@ interface OcrRowState {
   unitName?: string
   retail_price?: number | null
   friend_price?: number | null
-  /** 库内最近进货价（件均价，分） */
+  /** 库内最近进货价（按 SKU 销售单位，可能是箱/提价或件均价，分） */
   latest_purchase_price?: number | null
+  /** 命中 SKU 的销售单位，用于价差展示 */
+  sku_sale_unit?: string | null
+  /** 价差展示时库内价单位 */
+  price_lib_unit?: string | null
   /** 单据价与库内价不一致 */
   priceWarn?: boolean
+  /** 命中商品是否已下架（商品列表默认不显示） */
+  archived?: boolean
   status: 'unmatched' | 'matched' | 'created' | 'missing'
 }
 
@@ -88,67 +153,126 @@ export default function PurchaseNew() {
   const [ocrRaw, setOcrRaw] = useState('')
   const [ocrLoading, setOcrLoading] = useState(false)
   const [ocrProgress, setOcrProgress] = useState<{ total: number; done: number; failed: number } | null>(null)
-  const [creatingRow, setCreatingRow] = useState<number | null>(null)
-  const [candidateRow, setCandidateRow] = useState<number | null>(null)
+  const [creatingRowId, setCreatingRowId] = useState<string | null>(null)
+  const [candidateRowId, setCandidateRowId] = useState<string | null>(null)
+  /** 手动检索弹框：商品码未命中后由用户输入关键词关联商品 */
+  const [manualSearch, setManualSearch] = useState<{
+    rowId: string
+    q: string
+    loading: boolean
+    items: ProductListItem[]
+    searched: boolean
+  } | null>(null)
   const [busy, setBusy] = useState(false)
   /** 1=完善商品  2=入库清单 */
   const [step, setStep] = useState<1 | 2>(1)
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pageIndexRef = useRef(0)
 
-  /** 单据价 vs 库内进货价：按单位是否已是「件」决定是否再除以规格 */
+  /** 单据价 vs 库内进货价：在同一单位下比（库内可能是箱价或件均价） */
+  const computePriceCompare = (row: OcrRowState) => {
+    return resolvePurchasePriceCompare({
+      docUnitPriceFen: row.unit_price === null ? null : yuanToFen(String(row.unit_price)),
+      conversion: row.conversion,
+      rowUnit: row.unitName || row.unit,
+      skuSaleUnit: row.sku_sale_unit,
+      latestPurchaseFen: row.latest_purchase_price,
+    })
+  }
+
   const computePriceWarn = (row: OcrRowState): boolean => {
-    if (row.status !== 'matched' || row.unit_price === null || row.latest_purchase_price == null) {
-      return false
-    }
-    const conv = Number(row.conversion) || 1
-    const unitIsPiece = /^(件|个|支|瓶|袋|盒|罐)$/.test(row.unit || '')
-    // 单据单价已是件价 → 直接比；若是箱/提等 → 折成件价再比
-    const docBaseFen = Math.round(
-      (row.unit_price * 100) / (unitIsPiece ? 1 : Math.max(conv, 1)),
-    )
-    return Math.abs(docBaseFen - row.latest_purchase_price) >= 1
+    if (row.status !== 'matched') return false
+    return !!computePriceCompare(row)?.warn
   }
 
   const ocrAutoRef = useRef(false)
-  /** 「去编辑」打开的行下标，返回时刷新该行库内价 */
-  const editReturnIndexRef = useRef<number | null>(null)
+  /** 「去编辑」打开的行 ID，返回时刷新该行库内价 */
+  const editReturnRowIdRef = useRef<string | null>(null)
   const ocrRowsRef = useRef<OcrRowState[]>([])
   ocrRowsRef.current = ocrRows
 
+  const newOcrRowId = (pageIndex: number, seq: number) =>
+    `p${pageIndex}-${Date.now()}-${seq}-${Math.random().toString(36).slice(2, 8)}`
+
+  const findOcrIndexByRowId = (rows: OcrRowState[], rowId: string) =>
+    rows.findIndex((row) => row.rowId === rowId)
+
+  const patchOcrRowByRowId = (rowId: string, patch: Partial<OcrRowState> | ((row: OcrRowState) => OcrRowState)) => {
+    setOcrRows((previous) => {
+      const index = findOcrIndexByRowId(previous, rowId)
+      if (index < 0) return previous
+      const next = [...previous]
+      const current = next[index]!
+      next[index] =
+        typeof patch === 'function' ? patch(current) : { ...current, ...patch }
+      return next
+    })
+  }
+
+  const ignoreOcrRow = (rowId: string) => {
+    setOcrRows((previous) => previous.filter((row) => row.rowId !== rowId))
+    setManualSearch((prev) => (prev?.rowId === rowId ? null : prev))
+    setCandidateRowId((prev) => (prev === rowId ? null : prev))
+    Taro.showToast({ title: '已忽略该行', icon: 'none' })
+  }
+
   /** 编辑商品返回后：以库内当前价刷新该行并重算价差提示 */
-  const refreshRowFromServer = async (index: number) => {
-    const row = ocrRowsRef.current[index]
+  const refreshRowFromServer = async (rowId: string) => {
+    const row = ocrRowsRef.current.find((item) => item.rowId === rowId)
     if (!row?.product_id) return
     try {
       const detail = await api.get<ProductDetail>(`/api/products/${row.product_id}`)
       const sku = detail.skus.find((item) => item.id === row.sku_id) ?? detail.skus[0]
-      setOcrRows((previous) => {
-        const next = [...previous]
-        const target = next[index]
-        if (!target) return previous
-        const conv = Number(target.conversion) || 1
-        const unitIsPiece = /^(件|个|支|瓶|袋|盒|罐)$/.test(target.unit || '')
-        const docBaseFen =
-          target.unit_price === null
-            ? null
-            : Math.round((target.unit_price * 100) / (unitIsPiece ? 1 : Math.max(conv, 1)))
+      patchOcrRowByRowId(rowId, (target) => {
         const latest = sku?.latest_purchase_price ?? null
-        next[index] = {
+        const next: OcrRowState = {
           ...target,
           productName: detail.product.name,
           unitName: sku?.sale_unit ?? target.unitName,
           retail_price: sku?.retail_price ?? null,
           friend_price: sku?.friend_price ?? null,
           latest_purchase_price: latest,
-          priceWarn: docBaseFen !== null && latest !== null && Math.abs(docBaseFen - latest) >= 1,
+          sku_sale_unit: sku?.sale_unit ?? target.sku_sale_unit ?? null,
+          archived: detail.product.status === 'archived' || sku?.status === 'archived',
           status: 'matched',
         }
+        const cmp = resolvePurchasePriceCompare({
+          docUnitPriceFen: next.unit_price === null ? null : yuanToFen(String(next.unit_price)),
+          conversion: next.conversion,
+          rowUnit: next.unitName || next.unit,
+          skuSaleUnit: next.sku_sale_unit,
+          latestPurchaseFen: latest,
+        })
+        next.priceWarn = !!cmp?.warn
+        next.price_lib_unit = cmp?.libDisplayUnit ?? null
         return next
       })
+      const after = ocrRowsRef.current.find((item) => item.rowId === rowId)
+      if (after?.priceWarn) {
+        void showPriceWarnModal([after], { showCancel: false, confirmText: '知道了' })
+      }
     } catch {
       // ignore
     }
+  }
+
+  const applyAiPurchaseDraft = (draft: AiPurchaseDraft) => {
+    setItems(
+      draft.items.map((item) => ({
+        sku_id: item.sku_id,
+        productName: item.productName,
+        specName: item.specName,
+        unit_name: item.unit_name || '件',
+        conversion: String(item.conversion || 1),
+        qty: String(item.qty),
+        unit_price: fenToYuan(item.unit_price_fen),
+      })),
+    )
+    setSupplier(draft.supplier_name || '')
+    setOrderedAt(draft.ordered_at || todayString())
+    setNote(draft.note || '')
+    setStep(2)
+    Taro.showToast({ title: '已导入 AI 入库草稿', icon: 'none' })
   }
 
   useDidShow(() => {
@@ -156,15 +280,16 @@ export default function PurchaseNew() {
       ocrAutoRef.current = true
       takePhoto()
     }
-    if (editReturnIndexRef.current !== null) {
-      const index = editReturnIndexRef.current
-      editReturnIndexRef.current = null
-      void refreshRowFromServer(index)
+    if (editReturnRowIdRef.current) {
+      const rowId = editReturnRowIdRef.current
+      editReturnRowIdRef.current = null
+      void refreshRowFromServer(rowId)
     }
     // 从创建商品页返回：把新建 sku 绑到对应 OCR 行
     try {
       const bind = Taro.getStorageSync('sm_purchase_bind_row') as
         | {
+            rowId?: string
             rowIndex?: number
             pending?: boolean
             sku_id?: number | null
@@ -176,28 +301,38 @@ export default function PurchaseNew() {
         | ''
         | undefined
       if (bind && typeof bind === 'object' && bind.pending && bind.sku_id) {
-        const rowIndex = bind.rowIndex ?? -1
-        if (rowIndex >= 0) {
-          setOcrRows((previous) => {
-            const next = [...previous]
-            if (!next[rowIndex]) return previous
-            next[rowIndex] = {
-              ...next[rowIndex]!,
-              sku_id: bind.sku_id!,
-              productName: bind.productName || next[rowIndex]!.name,
-              unitName: bind.unitName || next[rowIndex]!.unit,
-              retail_price: bind.retail_price ?? null,
-              friend_price: bind.friend_price ?? null,
-              status: 'created',
-            }
-            return next
-          })
+        const rowId = bind.rowId || ''
+        if (rowId) {
+          patchOcrRowByRowId(rowId, (prev) => ({
+            ...prev,
+            sku_id: bind.sku_id!,
+            productName: bind.productName || prev.name,
+            unitName: bind.unitName || prev.unit,
+            retail_price: bind.retail_price ?? null,
+            friend_price: bind.friend_price ?? null,
+            status: 'created',
+          }))
         }
         Taro.showToast({ title: `已完善 ${bind.productName || '商品'}`, icon: 'none' })
         Taro.removeStorageSync('sm_purchase_bind_row')
       }
     } catch {
       // ignore
+    }
+    const aiDraft = Taro.getStorageSync('sm_ai_purchase_draft') as AiPurchaseDraft | ''
+    if (aiDraft && Array.isArray(aiDraft.items) && aiDraft.items.length) {
+      Taro.removeStorageSync('sm_ai_purchase_draft')
+      if (items.length === 0 && ocrRows.length === 0) {
+        applyAiPurchaseDraft(aiDraft)
+      } else {
+        Taro.showModal({
+          title: 'AI 入库草稿',
+          content: `发现 AI 生成的入库草稿（${aiDraft.items.length} 行），是否替换当前明细？`,
+          success: (res) => {
+            if (res.confirm) applyAiPurchaseDraft(aiDraft)
+          },
+        })
+      }
     }
   })
 
@@ -225,20 +360,19 @@ export default function PurchaseNew() {
   const appendSku = (detail: ProductDetail, skuId: number) => {
     const sku = detail.skus.find((item) => item.id === skuId)
     if (!sku) return
-    setItems((previous) => [
-      ...previous,
-      {
-        sku_id: sku.id,
-        productName: detail.product.name,
-        specName: sku.spec_name,
-        unit_name: sku.sale_unit,
-        conversion: '1',
-        qty: '1',
-        unit_price: sku.latest_purchase_price ? fenToYuan(sku.latest_purchase_price) : '',
-        retail_price: sku.retail_price,
-        friend_price: sku.friend_price,
-      },
-    ])
+    const row: ItemRow = {
+      sku_id: sku.id,
+      productName: detail.product.name,
+      specName: sku.spec_name,
+      unit_name: sku.sale_unit,
+      conversion: '1',
+      qty: '1',
+      unit_price: sku.latest_purchase_price ? fenToYuan(sku.latest_purchase_price) : '',
+      retail_price: sku.retail_price,
+      friend_price: sku.friend_price,
+    }
+    // 同 sku 再次添加：合并数量/金额，避免清单里出现重复行
+    setItems((previous) => blendSameSkuItems([...previous, row]))
     setResults([])
     setKeyword('')
   }
@@ -333,13 +467,15 @@ export default function PurchaseNew() {
     setBusy(true)
     try {
       Taro.showLoading({ title: '入库中' })
+      // 提交前合并同 sku（进X送X：多行数量/总价合在一起摊进价）
+      const blended = blendSameSkuItems(items)
       const purchase = await api.post<{ id: number; purchase_no: string }>('/api/purchases', {
         supplier_name: supplier.trim() || null,
         ordered_at: orderedAt,
         note: note.trim() || null,
         image_keys: imageKeys,
         ocr_raw: ocrRaw || null,
-        items: items.map((item) => ({
+        items: blended.map((item) => ({
           sku_id: item.sku_id,
           unit_name: item.unit_name || '件',
           conversion: Number(item.conversion) || 1,
@@ -349,7 +485,7 @@ export default function PurchaseNew() {
       })
       Taro.hideLoading()
       Taro.showToast({ title: `入库成功 ${purchase.purchase_no}`, icon: 'success' })
-      const lowPriceLines = items.map((item) => {
+      const lowPriceLines = blended.map((item) => {
         const cost = normalizePurchaseCost(yuanToFen(String(item.unit_price)), Number(item.conversion) || 1)
         const retail = item.retail_price ?? null
         return {
@@ -439,7 +575,8 @@ export default function PurchaseNew() {
               previous ? `${previous}\n${result.raw}` : result.raw,
             )
             applyHeader(result.draft.headers?.[0])
-            const nextRows: OcrRowState[] = result.draft.rows.map((draftRow) => ({
+            const nextRows: OcrRowState[] = result.draft.rows.map((draftRow, seq) => ({
+              rowId: newOcrRowId(pageIndex, seq),
               box_code: draftRow.box_code,
               unit_code: draftRow.unit_code,
               name: draftRow.name,
@@ -449,7 +586,7 @@ export default function PurchaseNew() {
               unit_price:
                 draftRow.unit_price_fen === null
                   ? null
-                  : draftRow.unit_price_fen / 100,
+                  : Number(fenToYuan(draftRow.unit_price_fen)),
               amount:
                 draftRow.amount_fen === null ? null : draftRow.amount_fen / 100,
               conversion: draftRow.conversion_guess || 1,
@@ -457,13 +594,9 @@ export default function PurchaseNew() {
               page_index: pageIndex,
               status: 'unmatched',
             }))
-            setOcrRows((previous) => {
-              const start = previous.length
-              const merged = [...previous, ...nextRows]
-              // 识别完自动查库（不阻塞后续页）
-              void autoLookupAll(nextRows, start)
-              return merged
-            })
+            setOcrRows((previous) => [...previous, ...nextRows])
+            // 识别完自动查库（按 rowId 回写，忽略删行后不会错位）
+            void autoLookupAll(nextRows)
             recognized += nextRows.length
           } catch (error) {
             failedCount += 1
@@ -501,7 +634,7 @@ export default function PurchaseNew() {
   }
 
   const bindMatchToRow = (
-    index: number,
+    rowId: string,
     payload: {
       sku_id: number
       product_id?: number
@@ -510,23 +643,25 @@ export default function PurchaseNew() {
       retail_price?: number | null
       friend_price?: number | null
       latest_purchase_price?: number | null
+      sku_sale_unit?: string | null
+      archived?: boolean
     },
-    rowSnapshot?: OcrRowState,
   ) => {
-    setOcrRows((previous) => {
-      const next = [...previous]
-      const row = next[index]
-      if (!row) return previous
-      const conv = Number(row.conversion) || 1
-      const unitIsPiece = /^(件|个|支|瓶|袋|盒|罐)$/.test(row.unit || '')
-      const docBaseFen =
-        row.unit_price === null
-          ? null
-          : Math.round((row.unit_price * 100) / (unitIsPiece ? 1 : Math.max(conv, 1)))
+    const docUnitPrice =
+      ocrRowsRef.current.find((item) => item.rowId === rowId)?.unit_price ?? null
+    const cmp = resolvePurchasePriceCompare({
+      docUnitPriceFen: docUnitPrice === null ? null : yuanToFen(String(docUnitPrice)),
+      conversion: ocrRowsRef.current.find((item) => item.rowId === rowId)?.conversion ?? 1,
+      rowUnit:
+        payload.unitName ||
+        ocrRowsRef.current.find((item) => item.rowId === rowId)?.unit ||
+        '',
+      skuSaleUnit: payload.sku_sale_unit,
+      latestPurchaseFen: payload.latest_purchase_price,
+    })
+    patchOcrRowByRowId(rowId, (row) => {
       const latest = payload.latest_purchase_price ?? null
-      const warn =
-        docBaseFen !== null && latest !== null && Math.abs(docBaseFen - latest) >= 1
-      next[index] = {
+      const next: OcrRowState = {
         ...row,
         sku_id: payload.sku_id,
         product_id: payload.product_id,
@@ -535,164 +670,274 @@ export default function PurchaseNew() {
         retail_price: payload.retail_price ?? null,
         friend_price: payload.friend_price ?? null,
         latest_purchase_price: latest,
-        priceWarn: warn,
+        sku_sale_unit: payload.sku_sale_unit ?? row.sku_sale_unit ?? null,
+        archived: !!payload.archived,
         status: 'matched',
       }
+      next.priceWarn = !!cmp?.warn
+      next.price_lib_unit = cmp?.libDisplayUnit ?? null
       return next
     })
-    void rowSnapshot
+    return !!cmp?.warn
   }
 
-  /** 自动查库：条码优先，未命中则名称搜索，不弹选择 */
-  const autoLookupRow = async (index: number, row: OcrRowState, silent = true) => {
+  const priceWarnLine = (row: OcrRowState) => {
+    const doc =
+      row.unit_price === null || row.unit_price === undefined
+        ? '-'
+        : formatYuanDisplay(row.unit_price)
+    const lib =
+      row.latest_purchase_price === null || row.latest_purchase_price === undefined
+        ? '-'
+        : formatFen(row.latest_purchase_price)
+    return `${row.productName || row.name || '商品'}：单据 ${doc} 元 / 库内 ${lib}`
+  }
+
+  /** 价差弹框：匹配命中或进入清单前，明确提示 */
+  const showPriceWarnModal = async (
+    rows: OcrRowState[],
+    options?: { title?: string; confirmText?: string; showCancel?: boolean },
+  ) => {
+    if (!rows.length) return true
+    const lines = rows.slice(0, 6).map(priceWarnLine)
+    const more = rows.length > 6 ? `\n…等共 ${rows.length} 行` : ''
+    const res = await Taro.showModal({
+      title:
+        options?.title ||
+        (rows.length === 1 ? '进货价与库内不一致' : `有 ${rows.length} 行进货价与库内不一致`),
+      content: `${lines.join('\n')}${more}\n\n请核对单据价与库内价；确认无误可继续。`,
+      confirmText: options?.confirmText || '知道了',
+      cancelText: '返回核对',
+      showCancel: options?.showCancel !== false,
+    })
+    return !!(res.confirm || options?.showCancel === false)
+  }
+
+  const collectPriceWarns = (rowIds?: Set<string>) => {
+    return ocrRowsRef.current.filter(
+      (row) => row.priceWarn && (!rowIds || rowIds.has(row.rowId)),
+    )
+  }
+
+  const applyMatchHit = (rowId: string, hit: NonNullable<MatchOcrRowResult['hit']>) => {
+    const warned = bindMatchToRow(rowId, {
+      sku_id: hit.sku_id,
+      product_id: hit.product_id,
+      productName: hit.product_name,
+      unitName: hit.sale_unit,
+      retail_price: hit.retail_price,
+      friend_price: hit.friend_price,
+      latest_purchase_price: hit.latest_purchase_price,
+      sku_sale_unit: hit.sale_unit,
+      archived: hit.product_status === 'archived' || hit.sku_status === 'archived',
+    })
+    return warned
+  }
+
+  const markRowMissing = (rowId: string) => {
+    patchOcrRowByRowId(rowId, (row) =>
+      row.sku_id ? row : { ...row, status: 'missing' },
+    )
+  }
+
+  /** 自动查库：仅商品码（箱码→件码）；未命中不扫品名 */
+  const autoLookupRow = async (rowId: string, silent = true) => {
+    const row = ocrRowsRef.current.find((item) => item.rowId === rowId)
     if (!row || row.sku_id) return false
-    setCandidateRow(index)
+    setCandidateRowId(rowId)
     try {
-      for (const code of [row.box_code, row.unit_code]) {
-        if (!code) continue
-        try {
-          const lookup = await api.get<{
-            product?: ProductDetail
-            matched_sku_ids?: number[]
-          }>(`/api/barcodes/lookup?code=${encodeURIComponent(code)}`)
-          const product = lookup.product
-          const matched = lookup.matched_sku_ids ?? []
-          if (product && matched.length) {
-            const skuId = matched[0]!
-            const sku = product.skus.find((item) => item.id === skuId)
-            bindMatchToRow(index, {
-              sku_id: skuId,
-              product_id: product.product.id,
-              productName: product.product.name,
-              unitName: sku?.sale_unit ?? null,
-              retail_price: sku?.retail_price ?? null,
-              friend_price: sku?.friend_price ?? null,
-              latest_purchase_price: sku?.latest_purchase_price ?? null,
-            })
-            if (!silent) Taro.showToast({ title: `已匹配 ${product.product.name}`, icon: 'none' })
-            return true
-          }
-        } catch {
-          // 继续下一个码
-        }
-      }
-      if (row.name) {
-        const data = await api.get<{ items: ProductListItem[] }>(
-          `/api/products?q=${encodeURIComponent(row.name)}&page_size=5`,
-        )
-        const hit = data.items.find((item) => item.name === row.name) || data.items[0]
-        if (hit) {
-          const detail = await pickSku(hit.id)
-          if (detail) {
-            const active = detail.skus.filter((sku) => sku.status === 'active')
-            const sku =
-              active.find((s) => (s.sale_unit || '') === (row.unit || '')) || active[0]
-            if (sku) {
-              bindMatchToRow(index, {
-                sku_id: sku.id,
-                product_id: detail.product.id,
-                productName: detail.product.name,
-                unitName: sku.sale_unit,
-                retail_price: sku.retail_price,
-                friend_price: sku.friend_price,
-                latest_purchase_price: sku.latest_purchase_price,
-              })
-              if (!silent) {
-                Taro.showToast({ title: `已匹配 ${detail.product.name}`, icon: 'none' })
-              }
-              return true
-            }
-          }
-        }
-      }
-      setOcrRows((previous) => {
-        const next = [...previous]
-        if (next[index] && !next[index]!.sku_id) {
-          next[index] = { ...next[index]!, status: 'missing' }
-        }
-        return next
+      const data = await api.post<{ results: MatchOcrRowResult[] }>('/api/products/match-ocr', {
+        rows: [{ box_code: row.box_code || null, unit_code: row.unit_code || null }],
       })
-      if (!silent) Taro.showToast({ title: '商品不在库，请创建', icon: 'none' })
+      const result = data.results?.[0]
+      // 行可能已被忽略
+      const still = ocrRowsRef.current.find((item) => item.rowId === rowId)
+      if (!still) return false
+      if (result?.status === 'matched' && result.hit) {
+        const warned = applyMatchHit(rowId, result.hit)
+        if (!silent) {
+          Taro.showToast({ title: `已匹配 ${result.hit.product_name}`, icon: 'none' })
+          if (warned) {
+            void showPriceWarnModal(
+              [
+                {
+                  rowId,
+                  productName: result.hit.product_name,
+                  name: result.hit.product_name,
+                  unit_price: still.unit_price,
+                  latest_purchase_price: result.hit.latest_purchase_price,
+                  unit: still.unit,
+                  conversion: still.conversion,
+                  status: 'matched',
+                  box_code: still.box_code,
+                  unit_code: still.unit_code,
+                  qty: still.qty,
+                  amount: still.amount,
+                  image_key: still.image_key,
+                  page_index: still.page_index,
+                },
+              ],
+              { showCancel: false, confirmText: '知道了' },
+            )
+          }
+        }
+        return true
+      }
+      markRowMissing(rowId)
+      if (!silent) Taro.showToast({ title: '商品码未入库，请检索或创建', icon: 'none' })
       return false
     } catch {
       return false
     } finally {
-      setCandidateRow(null)
+      setCandidateRowId((prev) => (prev === rowId ? null : prev))
     }
   }
 
-  const autoLookupAll = async (rows: OcrRowState[], startIndex: number) => {
-    await Promise.all(
-      rows.map((row, i) =>
-        autoLookupRow(startIndex + i, row, true).then(() => undefined).catch(() => undefined),
-      ),
-    )
+  const autoLookupAll = async (rows: OcrRowState[]) => {
+    if (!rows.length) return
+    const chunkSize = 50
+    const idSet = new Set(rows.map((row) => row.rowId))
+    for (let offset = 0; offset < rows.length; offset += chunkSize) {
+      const slice = rows.slice(offset, offset + chunkSize)
+      try {
+        const data = await api.post<{ results: MatchOcrRowResult[] }>('/api/products/match-ocr', {
+          rows: slice.map((row) => ({
+            box_code: row.box_code || null,
+            unit_code: row.unit_code || null,
+          })),
+        })
+        const results = data.results ?? []
+        slice.forEach((row, i) => {
+          const result = results[i]
+          if (result?.status === 'matched' && result.hit) {
+            applyMatchHit(row.rowId, result.hit)
+          } else {
+            markRowMissing(row.rowId)
+          }
+        })
+      } catch {
+        slice.forEach((row) => markRowMissing(row.rowId))
+      }
+    }
+    // 批量匹配结束后，价差用弹框集中提示（行内标记不够明显）
+    const warns = collectPriceWarns(idSet)
+    if (warns.length) {
+      void showPriceWarnModal(warns, { showCancel: false, confirmText: '知道了' })
+    }
   }
 
-  const matchRow = async (index: number) => {
-    const row = ocrRows[index]
-    if (!row) return
-    const found = await autoLookupRow(index, row, false)
-    if (found) return
-    setCandidateRow(index)
+  const openManualSearchModal = (rowId: string) => {
+    setManualSearch({ rowId, q: '', loading: false, items: [], searched: false })
+  }
+
+  const searchInManualModal = async () => {
+    if (!manualSearch) return
+    const keyword = manualSearch.q.trim()
+    if (!keyword) {
+      Taro.showToast({ title: '请输入品名或条码', icon: 'none' })
+      return
+    }
+    setManualSearch((s) => (s ? { ...s, loading: true } : s))
     try {
       const data = await api.get<{ items: ProductListItem[] }>(
-        `/api/products?q=${encodeURIComponent(row.name)}&page_size=8`,
+        `/api/products?q=${encodeURIComponent(keyword)}&page_size=10&status=all`,
       )
-      if (!data.items.length) {
-        Taro.showToast({ title: '没有相似商品，请创建', icon: 'none' })
-        return
-      }
-      const sheet = await Taro.showActionSheet({ itemList: data.items.map((item) => item.name) })
-      const product = data.items[sheet.tapIndex]
-      if (!product) return
-      const detail = await pickSku(product.id)
-      if (!detail) return
-      const active = detail.skus.filter((sku) => sku.status === 'active')
-      let skuId: number | undefined
-      if (active.length === 1) {
-        skuId = active[0]!.id
-      } else {
-        const skuSheet = await Taro.showActionSheet({
-          itemList: active.map((sku) => `${sku.spec_name ?? '默认'} ${formatFen(sku.latest_purchase_price)}`),
-        })
-        skuId = active[skuSheet.tapIndex]?.id
-      }
-      if (!skuId) return
-      const matchedSku = detail.skus.find((sku) => sku.id === skuId)
-      bindMatchToRow(index, {
-        sku_id: skuId,
-        product_id: detail.product.id,
-        productName: detail.product.name,
-        unitName: matchedSku?.sale_unit ?? null,
-        retail_price: matchedSku?.retail_price ?? null,
-        friend_price: matchedSku?.friend_price ?? null,
-        latest_purchase_price: matchedSku?.latest_purchase_price ?? null,
-      })
+      setManualSearch((s) =>
+        s ? { ...s, loading: false, items: data.items || [], searched: true } : s,
+      )
     } catch (error) {
-      const message = (error as Error).message ?? ''
-      if (!message.includes('cancel')) Taro.showToast({ title: message, icon: 'none' })
-    } finally {
-      setCandidateRow(null)
+      setManualSearch((s) => (s ? { ...s, loading: false, searched: true } : s))
+      Taro.showToast({ title: (error as Error).message || '检索失败', icon: 'none' })
     }
   }
 
-  const updateOcrRow = (index: number, patch: Partial<OcrRowState>) => {
-    setOcrRows((previous) => {
-      const next = [...previous]
-      const row = { ...next[index]!, ...patch }
-      if (row.status === 'matched') {
-        row.priceWarn = computePriceWarn(row)
+  const bindSkuFromSearch = async (product: ProductListItem) => {
+    const rowId = manualSearch?.rowId
+    if (!rowId) return
+    const detail = await pickSku(product.id)
+    if (!detail) return
+    const active = detail.skus.filter((sku) => sku.status === 'active')
+    const pool = active.length ? active : detail.skus
+    let skuId: number | undefined
+    if (pool.length === 1) {
+      skuId = pool[0]!.id
+    } else if (pool.length > 1) {
+      const skuSheet = await Taro.showActionSheet({
+        itemList: pool.map((sku) => `${sku.spec_name ?? '默认'} ${formatFen(sku.latest_purchase_price)}`),
+      })
+      skuId = pool[skuSheet.tapIndex]?.id
+    }
+    if (!skuId) return
+    const matchedSku = detail.skus.find((sku) => sku.id === skuId)
+    const warned = bindMatchToRow(rowId, {
+      sku_id: skuId,
+      product_id: detail.product.id,
+      productName: detail.product.name,
+      unitName: matchedSku?.sale_unit ?? null,
+      retail_price: matchedSku?.retail_price ?? null,
+      friend_price: matchedSku?.friend_price ?? null,
+      latest_purchase_price: matchedSku?.latest_purchase_price ?? null,
+      sku_sale_unit: matchedSku?.sale_unit ?? null,
+      archived: detail.product.status === 'archived' || matchedSku?.status === 'archived',
+    })
+    setManualSearch(null)
+    if (warned) {
+      const cur = ocrRowsRef.current.find((item) => item.rowId === rowId)
+      void showPriceWarnModal(
+        [
+          {
+            rowId,
+            productName: detail.product.name,
+            name: detail.product.name,
+            unit_price: cur?.unit_price ?? null,
+            latest_purchase_price: matchedSku?.latest_purchase_price ?? null,
+            unit: cur?.unit || '',
+            conversion: cur?.conversion || 1,
+            status: 'matched',
+            box_code: cur?.box_code ?? null,
+            unit_code: cur?.unit_code ?? null,
+            qty: cur?.qty || 0,
+            amount: cur?.amount ?? null,
+            image_key: cur?.image_key || '',
+            page_index: cur?.page_index || 0,
+          },
+        ],
+        { showCancel: false, confirmText: '知道了' },
+      )
+    }
+  }
+
+  const matchRow = async (rowId: string) => {
+    const row = ocrRowsRef.current.find((item) => item.rowId === rowId)
+    if (!row) return
+    const found = await autoLookupRow(rowId, false)
+    if (found) return
+    // 码未命中：弹出明显检索弹框，由用户输入关键词
+    openManualSearchModal(rowId)
+  }
+
+  const updateOcrRow = (rowId: string, patch: Partial<OcrRowState>) => {
+    patchOcrRowByRowId(rowId, (row) => {
+      const next = { ...row, ...patch }
+      if (next.status === 'matched') {
+        const cmp = resolvePurchasePriceCompare({
+          docUnitPriceFen: next.unit_price === null ? null : yuanToFen(String(next.unit_price)),
+          conversion: next.conversion,
+          rowUnit: next.unitName || next.unit,
+          skuSaleUnit: next.sku_sale_unit,
+          latestPurchaseFen: next.latest_purchase_price,
+        })
+        next.priceWarn = !!cmp?.warn
+        next.price_lib_unit = cmp?.libDisplayUnit ?? null
       }
-      next[index] = row
       return next
     })
   }
 
-  const createPairFromRow = async (index: number) => {
-    const row = ocrRows[index]
+  const createPairFromRow = async (rowId: string) => {
+    const row = ocrRowsRef.current.find((item) => item.rowId === rowId)
     if (!row) return
-    setCreatingRow(index)
+    setCreatingRowId(rowId)
     try {
       const result = await api.post<OcrFromRowResult>('/api/products/from-ocr-row', {
         name: row.name,
@@ -703,24 +948,20 @@ export default function PurchaseNew() {
         spec_hint: null,
         sale_unit: row.unit || '箱',
       })
-      setOcrRows((previous) => {
-        const next = [...previous]
-        next[index] = {
-          ...next[index]!,
-          sku_id: result.box.sku_id,
-          productName: result.box.name,
-          unitName: result.box.sale_unit,
-          retail_price: 0,
-          friend_price: null,
-          status: 'created',
-        }
-        return next
-      })
+      patchOcrRowByRowId(rowId, (prev) => ({
+        ...prev,
+        sku_id: result.box.sku_id,
+        productName: result.box.name,
+        unitName: result.box.sale_unit,
+        retail_price: 0,
+        friend_price: null,
+        status: 'created',
+      }))
       Taro.showToast({ title: '已创建箱装/单件并关联', icon: 'success' })
     } catch (error) {
       Taro.showToast({ title: (error as Error).message, icon: 'none' })
     } finally {
-      setCreatingRow(null)
+      setCreatingRowId((prev) => (prev === rowId ? null : prev))
     }
   }
 
@@ -728,16 +969,16 @@ export default function PurchaseNew() {
   const unmatchedCount = ocrRows.filter((row) => !row.sku_id).length
 
   /** 去创建 / 去编辑；预填走 storage，避免 URL 中文编码问题 */
-  const openCreateFromOcrRow = (index: number, isEdit = false) => {
-    const row = ocrRows[index]
+  const openCreateFromOcrRow = (rowId: string, isEdit = false) => {
+    const row = ocrRowsRef.current.find((item) => item.rowId === rowId)
     if (!row) return
     if (isEdit && row.product_id) {
       // 编辑已有商品：把识别到的全部字段带过去，便于核对/更新；返回后刷新该行
-      editReturnIndexRef.current = index
+      editReturnRowIdRef.current = rowId
       try {
         Taro.setStorageSync('sm_product_prefill', {
           from: 'purchase',
-          rowIndex: index,
+          rowId,
           name: row.name,
           box_code: row.box_code ?? '',
           unit_code: row.unit_code ?? '',
@@ -761,7 +1002,7 @@ export default function PurchaseNew() {
     try {
       Taro.setStorageSync('sm_product_prefill', {
         from: 'purchase',
-        rowIndex: index,
+        rowId,
         name: row.name,
         box_code: row.box_code ?? '',
         unit_code: row.unit_code ?? '',
@@ -773,7 +1014,7 @@ export default function PurchaseNew() {
         prev_retail_price: row.retail_price ?? null,
       })
       Taro.setStorageSync('sm_purchase_bind_row', {
-        rowIndex: index,
+        rowId,
         pending: true,
         sku_id: null,
         productName: row.name,
@@ -787,11 +1028,20 @@ export default function PurchaseNew() {
   }
 
   /** 第一步 → 第二步：把已绑定商品整批灌进入库清单 */
-  const goStep2 = () => {
+  const goStep2 = async () => {
     const bound = ocrRows.filter((row) => row.sku_id)
     if (!bound.length) {
       Taro.showToast({ title: '请先完善商品（匹配或一键双建）', icon: 'none' })
       return
+    }
+    const warnRows = bound.filter((row) => row.priceWarn)
+    if (warnRows.length) {
+      const ok = await showPriceWarnModal(warnRows, {
+        title: `有 ${warnRows.length} 行进货价与库内不一致`,
+        confirmText: '仍去入库清单',
+        showCancel: true,
+      })
+      if (!ok) return
     }
     const nextItems: ItemRow[] = bound.map((row) => ({
       sku_id: row.sku_id!,
@@ -800,14 +1050,23 @@ export default function PurchaseNew() {
       unit_name: row.unitName || row.unit || '箱',
       conversion: String(row.conversion || 1),
       qty: String(row.qty || 1),
-      unit_price: row.unit_price === null ? '' : String(row.unit_price),
+      unit_price:
+        row.unit_price === null || row.unit_price === undefined
+          ? ''
+          : formatYuanDisplay(row.unit_price),
       retail_price: row.retail_price ?? null,
       friend_price: row.friend_price ?? null,
     }))
     // 保留用户在第二步手动加过的、且 sku 不在 OCR 里的人工行
     const ocrSkus = new Set(bound.map((row) => row.sku_id))
     const manual = items.filter((item) => !ocrSkus.has(item.sku_id))
-    setItems([...nextItems, ...manual])
+    const combined = [...nextItems, ...manual]
+    // 同 sku（含进X送X 拆成多行）合并数量与总价，摊进货价
+    const merged = blendSameSkuItems(combined)
+    if (hasSkuDuplication(combined)) {
+      Taro.showToast({ title: '同商品已合并数量与金额', icon: 'none' })
+    }
+    setItems(merged)
     setStep(2)
   }
 
@@ -877,13 +1136,13 @@ export default function PurchaseNew() {
               </View>
               <View className="card">
                 {ocrRows.map((row, index) => (
-                  <View key={index} className="ocr-row">
+                  <View key={row.rowId} className="ocr-row">
                     <View className="row-between">
                       <Input
                         className="ocr-name"
                         value={row.name}
                         placeholder="商品名称"
-                        onInput={(event) => updateOcrRow(index, { name: event.detail.value })}
+                        onInput={(event) => updateOcrRow(row.rowId, { name: event.detail.value })}
                       />
                       <Text className="muted ocr-page-tag" onClick={() => previewSourceImage(row.image_key)}>
                         页{row.page_index + 1}
@@ -891,17 +1150,37 @@ export default function PurchaseNew() {
                     </View>
                     <View className="row-between">
                       {row.status === 'matched' ? (
-                        <Text className={`tag ${row.priceWarn ? 'tag-warn' : 'tag-primary'}`}>
-                          {row.priceWarn ? `已匹配 · ${row.productName} · 价差` : `已完善 · ${row.productName}`}
-                        </Text>
+                        row.archived ? (
+                          <Text className="tag tag-warn">
+                            已下架 · {row.productName} · 商品列表默认不显示
+                          </Text>
+                        ) : row.priceWarn ? (
+                          <Text
+                            className="tag tag-danger"
+                            onClick={() => {
+                              void showPriceWarnModal([row], { showCancel: false })
+                            }}
+                          >
+                            价差待确认 · {row.productName} · 点击看弹框
+                          </Text>
+                        ) : (
+                          <Text className="tag tag-primary">
+                            已完善 · {row.productName}
+                          </Text>
+                        )
                       ) : row.status === 'created' ? (
                         <Text className="tag tag-primary">已完善 · {row.productName}</Text>
                       ) : row.status === 'missing' ? (
-                        <Text className="tag tag-warn">库内无此商品，请创建</Text>
+                        <Text
+                          className={`tag tag-warn ${candidateRowId === row.rowId ? 'tag-loading' : ''}`}
+                          onClick={() => matchRow(row.rowId)}
+                        >
+                          商品码未命中 · 点此检索
+                        </Text>
                       ) : (
                         <Text
-                          className={`tag tag-warn ${candidateRow === index ? 'tag-loading' : ''}`}
-                          onClick={() => matchRow(index)}
+                          className={`tag tag-warn ${candidateRowId === row.rowId ? 'tag-loading' : ''}`}
+                          onClick={() => matchRow(row.rowId)}
                         >
                           查询中/匹配
                         </Text>
@@ -917,7 +1196,7 @@ export default function PurchaseNew() {
                           value={row.box_code ?? ''}
                           onInput={(event) => {
                             const v = event.detail.value.trim()
-                            updateOcrRow(index, { box_code: v || null })
+                            updateOcrRow(row.rowId, { box_code: v || null })
                           }}
                         />
                       </View>
@@ -930,7 +1209,7 @@ export default function PurchaseNew() {
                           value={row.unit_code ?? ''}
                           onInput={(event) => {
                             const v = event.detail.value.trim()
-                            updateOcrRow(index, { unit_code: v || null })
+                            updateOcrRow(row.rowId, { unit_code: v || null })
                           }}
                         />
                       </View>
@@ -944,7 +1223,7 @@ export default function PurchaseNew() {
                           placeholder="如 10、16"
                           value={String(row.conversion)}
                           onInput={(event) =>
-                            updateOcrRow(index, { conversion: Number(event.detail.value) || 1 })
+                            updateOcrRow(row.rowId, { conversion: Number(event.detail.value) || 1 })
                           }
                         />
                       </View>
@@ -956,16 +1235,20 @@ export default function PurchaseNew() {
                           className={`input ${row.priceWarn ? 'input-warn' : ''}`}
                           type="digit"
                           placeholder="元"
-                          value={row.unit_price === null ? '' : String(row.unit_price)}
+                          value={
+                            row.unit_price === null || row.unit_price === undefined
+                              ? ''
+                              : formatYuanDisplay(row.unit_price)
+                          }
                           onInput={(event) =>
-                            updateOcrRow(index, {
+                            updateOcrRow(row.rowId, {
                               unit_price: event.detail.value === '' ? null : Number(event.detail.value),
                             })
                           }
                         />
                         {row.priceWarn && row.latest_purchase_price !== null ? (
                           <Text className="field-hint warn-text">
-                            库内 {formatFen(row.latest_purchase_price)}
+                            库内 {formatFen(row.latest_purchase_price)} · 与单据单价直接对比
                           </Text>
                         ) : null}
                       </View>
@@ -976,7 +1259,7 @@ export default function PurchaseNew() {
                           type="digit"
                           placeholder="进货数"
                           value={String(row.qty)}
-                          onInput={(event) => updateOcrRow(index, { qty: Number(event.detail.value) || 0 })}
+                          onInput={(event) => updateOcrRow(row.rowId, { qty: Number(event.detail.value) || 0 })}
                         />
                       </View>
                       <View className="field quarter">
@@ -985,21 +1268,21 @@ export default function PurchaseNew() {
                           className="input"
                           placeholder="件/箱"
                           value={row.unit}
-                          onInput={(event) => updateOcrRow(index, { unit: event.detail.value })}
+                          onInput={(event) => updateOcrRow(row.rowId, { unit: event.detail.value })}
                         />
                       </View>
                     </View>
                     <View className="inline-actions">
                       <Button
                         className="btn btn-ghost small-btn"
-                        onClick={() => setOcrRows((previous) => previous.filter((_, i) => i !== index))}
+                        onClick={() => ignoreOcrRow(row.rowId)}
                       >
                         忽略
                       </Button>
                       {row.sku_id && row.status === 'matched' ? (
                         <Button
                           className="btn btn-ghost small-btn"
-                          onClick={() => openCreateFromOcrRow(index, true)}
+                          onClick={() => openCreateFromOcrRow(row.rowId, true)}
                         >
                           去编辑
                         </Button>
@@ -1007,15 +1290,21 @@ export default function PurchaseNew() {
                       {(row.status === 'unmatched' || row.status === 'missing') ? (
                         <>
                           <Button
+                            className="btn btn-ghost small-btn"
+                            onClick={() => matchRow(row.rowId)}
+                          >
+                            检索匹配
+                          </Button>
+                          <Button
                             className="btn btn-primary small-btn"
-                            onClick={() => openCreateFromOcrRow(index, false)}
+                            onClick={() => openCreateFromOcrRow(row.rowId, false)}
                           >
                             去创建商品
                           </Button>
                           {!!row.box_code && !!row.unit_code ? (
                             <Text
-                              className={`tag tag-primary ${creatingRow === index ? 'tag-loading' : ''}`}
-                              onClick={() => createPairFromRow(index)}
+                              className={`tag tag-primary ${creatingRowId === row.rowId ? 'tag-loading' : ''}`}
+                              onClick={() => createPairFromRow(row.rowId)}
                             >
                               一键双建
                             </Text>
@@ -1024,7 +1313,11 @@ export default function PurchaseNew() {
                       ) : null}
                       {row.status === 'matched' && row.sku_id ? (
                         <Text className="muted" style={{ alignSelf: 'center' }}>
-                          {row.priceWarn ? '价差请确认' : '已就绪，将进入入库清单'}
+                          {row.archived
+                            ? '商品已下架，入库前请先上架'
+                            : row.priceWarn
+                              ? '价差请确认'
+                              : '已就绪，将进入入库清单'}
                         </Text>
                       ) : null}
                       {row.status === 'created' && row.sku_id ? (
@@ -1052,7 +1345,9 @@ export default function PurchaseNew() {
             <Button
               className="btn btn-primary"
               disabled={boundCount ? undefined : true}
-              onClick={goStep2}
+              onClick={() => {
+                void goStep2()
+              }}
             >
               下一步：入库清单
             </Button>
@@ -1123,14 +1418,17 @@ export default function PurchaseNew() {
             ))}
           </View>
 
-          <View className="section-title">入库清单（{items.length}）</View>
+          <View className="section-title">
+            入库清单（{items.length}）
+            {hasSkuDuplication(items) ? ' · 存在同商品多行，提交时会合并' : ''}
+          </View>
           {!items.length && (
             <View className="card">
               <View className="empty">返回第一步完善商品，或扫码/搜索添加</View>
             </View>
           )}
           {items.map((item, index) => (
-            <View key={index} className="card item-card">
+            <View key={item.sku_id} className="card item-card">
               <View className="row-between">
                 <Text className="item-name">
                   {item.productName}
@@ -1179,7 +1477,7 @@ export default function PurchaseNew() {
               </View>
               <View className="row-between item-line-total">
                 <Text className="muted">
-                  {item.qty || 0} {item.unit_name} × {item.unit_price || '0'} 元
+                  {item.qty || 0} {item.unit_name} × {formatYuanDisplay(item.unit_price)} 元
                 </Text>
                 <Text className="price-text">{formatFen(yuanToFen(item.unit_price) * (Number(item.qty) || 0))}</Text>
               </View>
@@ -1214,6 +1512,65 @@ export default function PurchaseNew() {
           </View>
         </>
       )}
+
+      {manualSearch ? (
+        <View className="search-modal-mask" onClick={() => setManualSearch(null)}>
+          <View className="search-modal" onClick={(e) => e.stopPropagation()}>
+            <View className="search-modal-title">检索关联商品</View>
+            <Text className="search-modal-desc">
+              商品码未命中。请自行输入品名或条码后查询，再从结果里选择店内商品。
+            </Text>
+            <View className="search-modal-input-row">
+              <Input
+                className="input search-modal-input"
+                placeholder="例如：金典 或 690799…"
+                value={manualSearch.q}
+                focus
+                onInput={(event) =>
+                  setManualSearch((s) => (s ? { ...s, q: event.detail.value } : s))
+                }
+                onConfirm={() => void searchInManualModal()}
+              />
+              <Button
+                className="btn btn-primary search-modal-btn"
+                loading={manualSearch.loading}
+                onClick={() => void searchInManualModal()}
+              >
+                查询
+              </Button>
+            </View>
+            {manualSearch.searched ? (
+              manualSearch.items.length ? (
+                <View className="search-modal-list">
+                  {manualSearch.items.map((item) => (
+                    <View
+                      key={item.id}
+                      className="search-modal-item"
+                      onClick={() => void bindSkuFromSearch(item)}
+                    >
+                      <View className="search-modal-item-main">
+                        <Text className="search-modal-item-name">
+                          {item.name}
+                          {item.status === 'archived' ? '（已下架）' : ''}
+                        </Text>
+                        <Text className="muted">
+                          零售价 {formatFen(item.min_retail_price)} · {item.sku_count} 版本
+                        </Text>
+                      </View>
+                      <Text className="search-modal-item-action">选择</Text>
+                    </View>
+                  ))}
+                </View>
+              ) : (
+                <Text className="muted search-modal-empty">没有匹配商品，可关闭后点「去创建商品」</Text>
+              )
+            ) : null}
+            <Button className="btn btn-ghost full-btn" style={{ marginTop: 20 }} onClick={() => setManualSearch(null)}>
+              取消
+            </Button>
+          </View>
+        </View>
+      ) : null}
     </View>
   )
 }

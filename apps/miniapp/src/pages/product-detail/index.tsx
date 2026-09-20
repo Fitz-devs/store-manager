@@ -113,6 +113,18 @@ export default function ProductDetailPage() {
     load()
   })
 
+  // 微信小程序转发给同事
+  onShareAppMessage = () => {
+    if (!detail) {
+      return { title: '店铺管家', path: '/pages/products/index' }
+    }
+    const title = detail.product.name.slice(0, 50)
+    return {
+      title,
+      path: `/pages/product-detail/index?id=${detail.product.id}`,
+    }
+  }
+
   const beginSensitive = (skuId: number) => {
     setHoldSkuId(skuId)
   }
@@ -201,6 +213,19 @@ export default function ProductDetailPage() {
       Taro.showToast({ title: '已下架', icon: 'success' })
       Taro.setStorageSync('sm_products_dirty', 1)
       setTimeout(() => Taro.navigateBack(), 400)
+    } catch (error) {
+      Taro.showToast({ title: (error as Error).message, icon: 'none' })
+    }
+  }
+
+  const restore = async () => {
+    const confirm = await Taro.showModal({ title: '上架商品', content: '上架后商品列表默认可见，开单可检索。确定吗？' })
+    if (!confirm.confirm) return
+    try {
+      await api.patch(`/api/products/${id}`, { status: 'active' })
+      Taro.showToast({ title: '已上架', icon: 'success' })
+      Taro.setStorageSync('sm_products_dirty', 1)
+      load()
     } catch (error) {
       Taro.showToast({ title: (error as Error).message, icon: 'none' })
     }
@@ -481,7 +506,11 @@ export default function ProductDetailPage() {
       )}
 
       <View className="footer-bar">
-        {product.status !== 'archived' && (
+        {product.status === 'archived' ? (
+          <Button className="btn btn-primary" onClick={restore}>
+            上架
+          </Button>
+        ) : (
           <Button className="btn btn-ghost" onClick={archive}>
             下架
           </Button>
