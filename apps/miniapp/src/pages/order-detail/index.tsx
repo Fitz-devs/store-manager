@@ -17,6 +17,7 @@ import {
 } from '../../utils/format'
 import { watermarkPhoto } from '../../utils/watermark'
 import { hasCoords, openMapForNavigation, pickMapLocation, promptMapFallback, formatPickedAddress } from '../../utils/map'
+import { SHARE_LOGO } from '../../utils/share'
 import './index.scss'
 
 type PayMethod = 'cash' | 'wechat' | 'alipay' | 'other'
@@ -63,13 +64,14 @@ export default function OrderDetailPage() {
   // 微信小程序转发给同事
   useShareAppMessage(() => {
     if (!order) {
-      return { title: '店铺管家', path: '/pages/orders/index' }
+      return { title: '店铺管家', path: '/pages/orders/index', imageUrl: SHARE_LOGO }
     }
     const total = formatFen(order.total)
     const title = `订单 ${order.order_no} ${total}`.slice(0, 50)
     return {
       title,
       path: `/pages/order-detail/index?id=${order.id}`,
+      imageUrl: SHARE_LOGO,
     }
   })
 

@@ -7,6 +7,7 @@ import PriceLineChart from '../../components/price-line-chart'
 import EyeIcon from '../../components/eye-icon'
 import { useAuthGuard } from '../../utils/auth'
 import { formatDateTime, formatFen, PRICE_TYPE_LABELS, yuanToFen } from '../../utils/format'
+import { buildShareImageUrl, SHARE_LOGO } from '../../utils/share'
 import './index.scss'
 
 type Tab = 'overview' | 'stats'
@@ -116,13 +117,11 @@ export default function ProductDetailPage() {
   // 微信小程序转发给同事
   useShareAppMessage(() => {
     if (!detail) {
-      return { title: '店铺管家', path: '/pages/products/index' }
+      return { title: '店铺管家', path: '/pages/products/index', imageUrl: SHARE_LOGO }
     }
     const title = detail.product.name.slice(0, 50)
-    return {
-      title,
-      path: `/pages/product-detail/index?id=${detail.product.id}`,
-    }
+    const path = `/pages/product-detail/index?id=${detail.product.id}`
+    return buildShareImageUrl(detail.product.image_key).then((imageUrl) => ({ title, path, imageUrl }))
   })
 
   const beginSensitive = (skuId: number) => {

@@ -6,6 +6,7 @@ import { api } from '../../api/client'
 import { useAuthGuard } from '../../utils/auth'
 import { formatFen, orderRemaining, orderStatusTagClass, orderStatusText } from '../../utils/format'
 import { hasCoords, openMapForNavigation, pickMapLocation, promptMapFallback, formatPickedAddress } from '../../utils/map'
+import { SHARE_LOGO } from '../../utils/share'
 import './index.scss'
 
 export default function CustomerDetailPage() {
@@ -89,7 +90,7 @@ export default function CustomerDetailPage() {
   // 微信小程序转发给同事
   useShareAppMessage(() => {
     if (!detail) {
-      return { title: '店铺管家', path: '/pages/customers/index' }
+      return { title: '店铺管家', path: '/pages/customers/index', imageUrl: SHARE_LOGO }
     }
     const name = detail.name
     const unpaid = detail.total_unpaid
@@ -98,6 +99,7 @@ export default function CustomerDetailPage() {
     return {
       title,
       path: `/pages/customer-detail/index?id=${detail.id}`,
+      imageUrl: SHARE_LOGO,
     }
   })
 

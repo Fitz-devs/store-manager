@@ -6,6 +6,7 @@ import { api, fileUrl } from '../../api/client'
 import { useAuthGuard } from '../../utils/auth'
 import { formatDateTime, formatFen } from '../../utils/format'
 import { pickImages, uploadLocalImage } from '../../utils/media'
+import { SHARE_LOGO } from '../../utils/share'
 import './index.scss'
 
 export default function PurchaseDetail() {
@@ -40,13 +41,14 @@ export default function PurchaseDetail() {
   // 微信小程序转发给同事
   useShareAppMessage(() => {
     if (!purchase) {
-      return { title: '店铺管家', path: '/pages/purchases/index' }
+      return { title: '店铺管家', path: '/pages/purchases/index', imageUrl: SHARE_LOGO }
     }
     const total = formatFen(purchase.total_amount)
     const title = `入库单 ${purchase.purchase_no} ${total}`.slice(0, 50)
     return {
       title,
       path: `/pages/purchase-detail/index?id=${purchase.id}`,
+      imageUrl: SHARE_LOGO,
     }
   })
 
