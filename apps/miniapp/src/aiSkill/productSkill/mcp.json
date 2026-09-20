@@ -1,0 +1,180 @@
+{
+  "apis": [
+    {
+      "name": "createProduct",
+      "description": "创建商品档案（变更类操作：仅在向用户完整复述品名/规格/单位/价格等建档信息并获得明确同意后调用）。手动建档单个商品，可带条码、进价、品牌、分类",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "description": "商品名称，例如『贝奇菜仔奶330ML礼盒』" },
+          "spec_name": { "type": "string", "description": "规格名，例如『经典版』『250ml*12』；无规格可省略" },
+          "sale_unit": { "type": "string", "description": "销售单位，例如『件』『箱』『瓶』，默认『件』" },
+          "retail_price_yuan": { "type": "string", "description": "零售价（元）。用户没说价格时省略（按 0 建档，价格后续在商品管理中完善）" },
+          "friend_price_yuan": { "type": "string", "description": "友情价（元），可省略" },
+          "purchase_price_yuan": { "type": "string", "description": "进货价（元），可省略" },
+          "barcode": { "type": "string", "description": "商品条码（8-64 位），可省略" },
+          "brand": { "type": "string", "description": "品牌，可省略" },
+          "category": { "type": "string", "description": "分类名，可省略" },
+          "aliases": { "type": "array", "items": { "type": "string" }, "description": "商品别名列表，可省略" },
+          "notes": { "type": "string", "description": "备注，可省略" }
+        },
+        "required": ["name"]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "product_id": { "type": "number" },
+          "sku_id": { "type": "number" },
+          "name": { "type": "string" },
+          "spec_name": { "type": "string" },
+          "sale_unit": { "type": "string" },
+          "retail_price_yuan": { "type": "string" },
+          "purchase_price_yuan": { "type": "string" },
+          "pagePath": { "type": "string", "format": "page-link", "x-link-text-field": "linkText" },
+          "linkText": { "type": "string" }
+        }
+      }
+    },
+    {
+      "name": "createProductsFromSlip",
+      "description": "按收货单行批量建档（变更类操作：仅在向用户完整复述整批明细并获得明确同意后调用）。适合入库流程中单据品在店内没有档案的场景，支持箱码/单件码双建与进价带入",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": { "type": "string", "description": "品名，取自单据原文" },
+                "spec_hint": { "type": "string", "description": "规格提示，例如『330ML礼盒』" },
+                "sale_unit": { "type": "string", "description": "销售单位，例如『件』『箱』，默认『件』" },
+                "unit_price_yuan": { "type": "string", "description": "单据进价（元），建档时带入进货价" },
+                "box_code": { "type": "string", "description": "箱条码，可省略" },
+                "unit_code": { "type": "string", "description": "单件条码，可省略" },
+                "conversion": { "type": "number", "description": "1 箱=N 件则填 N，可省略默认 1" }
+              },
+              "required": ["name"]
+            },
+            "description": "要建档的单据行，1-50 行"
+          }
+        },
+        "required": ["rows"]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "created": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": { "type": "string" },
+                "box_sku_id": { "type": "number", "description": "箱装规格 ID（若双建）" },
+                "box_product_id": { "type": "number" },
+                "unit_sku_id": { "type": "number", "description": "单件规格 ID（若双建）" },
+                "unit_product_id": { "type": "number" },
+                "purchase_price_yuan": { "type": "string" },
+                "link_id": { "type": "number" },
+                "no_barcode_fallback": { "type": "boolean", "description": "true 表示单据无条码，已回退为普通单规格建档" }
+              }
+            }
+          },
+          "failed": { "type": "array", "items": { "type": "object" } },
+          "created_count": { "type": "number" },
+          "failed_count": { "type": "number" }
+        }
+      }
+    },
+    {
+      "name": "addSku",
+      "description": "为已有商品新增规格（变更类操作：仅在向用户完整复述商品/新规格/价格并获得明确同意后调用）。例如同一商品加『红双喜·软』等不同版本",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "product_id": { "type": "number", "description": "商品 ID，取自 searchProducts 或建档接口返回的原值，禁止编造" },
+          "spec_name": { "type": "string", "description": "新规格名，例如『经典版』；无规格可省略" },
+          "sale_unit": { "type": "string", "description": "销售单位，默认『件』" },
+          "retail_price_yuan": { "type": "string", "description": "零售价（元），用户没说则省略按 0" },
+          "friend_price_yuan": { "type": "string", "description": "友情价（元），可省略" }
+        },
+        "required": ["product_id"]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "product_id": { "type": "number" },
+          "sku_id": { "type": "number" },
+          "spec_name": { "type": "string" },
+          "sale_unit": { "type": "string" },
+          "retail_price_yuan": { "type": "string" },
+          "friend_price_yuan": { "type": "string" },
+          "pagePath": { "type": "string", "format": "page-link", "x-link-text-field": "linkText" },
+          "linkText": { "type": "string" }
+        }
+      }
+    },
+    {
+      "name": "updateSkuPrice",
+      "description": "修改规格价格（变更类操作：必须先向用户复述『商品/规格/原价→新价/原因』并获得明确同意后才能调用）。变更会写入价格历史，reason 必填",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sku_id": { "type": "number", "description": "规格 ID，取自 searchProducts 等接口返回的原值，禁止编造" },
+          "retail_price_yuan": { "type": "string", "description": "新零售价（元）；不改零售价则省略" },
+          "friend_price_yuan": { "type": "string", "description": "新友情价（元）；传空字符串表示清除友情价；不改则省略" },
+          "reason": { "type": "string", "description": "调价原因，必填，例如『供货商涨价』『活动结束恢复原价』" }
+        },
+        "required": ["sku_id", "reason"]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "sku_id": { "type": "number" },
+          "retail_price_yuan": { "type": "string" },
+          "friend_price_yuan": { "type": "string" },
+          "reason": { "type": "string" }
+        }
+      }
+    },
+    {
+      "name": "setSkuStockStatus",
+      "description": "修改规格库存标记（变更类操作：仅在向用户复述商品/规格/目标状态并获得明确同意后调用）。仅标记在售/缺货，不盘点数量",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sku_id": { "type": "number", "description": "规格 ID，取自 searchProducts 等接口返回的原值，禁止编造" },
+          "status": { "type": "string", "enum": ["in_stock", "out_of_stock"], "description": "in_stock=在售，out_of_stock=缺货" }
+        },
+        "required": ["sku_id", "status"]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "sku_id": { "type": "number" },
+          "status": { "type": "string" },
+          "status_label": { "type": "string" }
+        }
+      }
+    },
+    {
+      "name": "archiveProduct",
+      "description": "下架商品（变更类操作：仅在用户明确表达下架/停售意图并复述商品名获其确认后调用）。下架后商品不在默认列表出现，历史单据不受影响；不提供删除能力",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "product_id": { "type": "number", "description": "商品 ID，取自 searchProducts 等接口返回的原值，禁止编造" }
+        },
+        "required": ["product_id"]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "product_id": { "type": "number" },
+          "status": { "type": "string" }
+        }
+      }
+    }
+  ],
+  "components": []
+}

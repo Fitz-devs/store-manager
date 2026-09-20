@@ -1,0 +1,365 @@
+{
+  "apis": [
+    {
+      "name": "matchProducts",
+      "description": "匹配店内商品用于开单。把用户口述的品名列表批量匹配为店内商品候选，返回规格、单位、零售价、优惠与缺货情况",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "keywords": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "从用户话语中提取的品名列表，例如 ['金典纯牛奶', '安慕希']。最多 20 个"
+          }
+        },
+        "required": [
+          "keywords"
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "matched_keyword": {
+                  "type": "string"
+                },
+                "sku_id": {
+                  "type": "number",
+                  "description": "规格 ID"
+                },
+                "product_id": {
+                  "type": "number",
+                  "description": "商品 ID"
+                },
+                "product_name": {
+                  "type": "string",
+                  "description": "商品名（含规格）"
+                },
+                "sale_unit": {
+                  "type": "string",
+                  "description": "销售单位"
+                },
+                "retail_price_yuan": {
+                  "type": "string",
+                  "description": "零售价（元）"
+                },
+                "promotion": {
+                  "type": "string",
+                  "description": "优惠活动文案，可能为空"
+                },
+                "out_of_stock": {
+                  "type": "boolean",
+                  "description": "是否缺货"
+                },
+                "ambiguous": {
+                  "type": "boolean",
+                  "description": "是否多候选需要用户确认"
+                },
+                "pagePath": {
+                  "type": "string",
+                  "format": "page-link",
+                  "x-link-text-field": "product_name"
+                }
+              }
+            }
+          },
+          "not_found": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "店内没有匹配到的品名"
+          },
+          "total": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    {
+      "name": "matchCustomers",
+      "description": "搜索店内客户用于开单。按名称、电话或地址检索客户，返回客户 ID 与欠款金额",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "keyword": {
+            "type": "string",
+            "description": "客户关键词，例如『伟记』『13800138000』。用户没有提到客户时，不要调用本接口"
+          },
+          "limit": {
+            "type": "number",
+            "description": "返回条数，范围 1-10，默认 5"
+          }
+        },
+        "required": [
+          "keyword"
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "customer_id": {
+                  "type": "number",
+                  "description": "客户 ID"
+                },
+                "name": {
+                  "type": "string",
+                  "description": "客户名称"
+                },
+                "phone": {
+                  "type": "string",
+                  "description": "电话，可能为空"
+                },
+                "unpaid_amount_yuan": {
+                  "type": "string",
+                  "description": "欠款金额（元）"
+                },
+                "order_count": {
+                  "type": "number",
+                  "description": "历史订单数"
+                },
+                "pagePath": {
+                  "type": "string",
+                  "format": "page-link",
+                  "x-link-text-field": "name"
+                }
+              }
+            }
+          },
+          "total": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    {
+      "name": "submitOrder",
+      "description": "提交订单（写操作：必须先把客户、每行明细数量单价、合计金额、收款方式或未付款情况完整复述给用户，获得明确同意后才能调用）。确认后直接下单，无需跳转小程序页面",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "sku_id": {
+                  "type": "number",
+                  "description": "规格 ID，取自 matchProducts 返回的 sku_id 原值，禁止编造"
+                },
+                "product_id": {
+                  "type": "number",
+                  "description": "商品 ID，取自 matchProducts 返回的 product_id 原值，禁止编造"
+                },
+                "qty": {
+                  "type": "number",
+                  "description": "购买数量，按销售单位计，例如 30 箱填 30"
+                },
+                "unit_price_yuan": {
+                  "type": "string",
+                  "description": "单价（元）；省略按店内零售价；用户议价时传谈定价格并在复述中说明"
+                }
+              },
+              "required": [
+                "sku_id",
+                "product_id",
+                "qty"
+              ]
+            },
+            "description": "订单明细，1-200 行"
+          },
+          "customer_id": {
+            "type": "number",
+            "description": "客户 ID，取自 matchCustomers 返回的原值；用户没提客户时省略（散客）"
+          },
+          "is_credit": {
+            "type": "boolean",
+            "description": "未付款时传 true；已收款时省略并传 payments"
+          },
+          "discount_yuan": {
+            "type": "string",
+            "description": "优惠金额（元），用户明确给出时才传"
+          },
+          "payments": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "method": {
+                  "type": "string",
+                  "enum": [
+                    "cash",
+                    "wechat",
+                    "alipay",
+                    "other"
+                  ],
+                  "description": "收款方式"
+                },
+                "amount_yuan": {
+                  "type": "string",
+                  "description": "收款金额（元）"
+                },
+                "note": {
+                  "type": "string",
+                  "description": "备注，其他方式的抵扣原因可写这里"
+                }
+              },
+              "required": [
+                "method",
+                "amount_yuan"
+              ]
+            },
+            "description": "收款明细，支持多笔组合；合计不得超过订单金额"
+          },
+          "delivery": {
+            "type": "object",
+            "properties": {
+              "address": {
+                "type": "string",
+                "description": "送货地址"
+              },
+              "contact": {
+                "type": "string",
+                "description": "联系人"
+              },
+              "phone": {
+                "type": "string",
+                "description": "电话"
+              },
+              "at": {
+                "type": "string",
+                "description": "约定送达时间，例如 2026-09-20 15:00"
+              }
+            },
+            "description": "送货信息；用户说要送货时传，不送货则省略"
+          },
+          "note": {
+            "type": "string",
+            "description": "订单备注，可省略"
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "description": "submitted 表示已下单"
+          },
+          "order_id": {
+            "type": "number"
+          },
+          "order_no": {
+            "type": "string"
+          },
+          "customer_name": {
+            "type": "string"
+          },
+          "line_count": {
+            "type": "number"
+          },
+          "total_yuan": {
+            "type": "string"
+          },
+          "paid_yuan": {
+            "type": "string"
+          },
+          "is_credit": {
+            "type": "boolean"
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "qty": {
+                  "type": "number"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "price_yuan": {
+                  "type": "string"
+                },
+                "amount_yuan": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "orderDetailPath": {
+            "type": "string",
+            "format": "page-link",
+            "x-link-text-field": "linkText"
+          },
+          "linkText": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "name": "patchOrderDeliveryPhoto",
+      "description": "补充/替换订单送货照（写操作：仅在用户明确要求补传送货照片时调用）。上传照片后 PATCH 到对应订单，订单详情页可预览；不改变订单收款与送达状态",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "order_id": {
+            "type": "number",
+            "description": "订单 ID，取自 submitOrder 返回的 order_id 原值，禁止编造"
+          },
+          "imagePath": {
+            "type": "string",
+            "format": "image",
+            "description": "用户在对话中发送的送货照片本地路径"
+          },
+          "note": {
+            "type": "string",
+            "description": "备注说明，可省略"
+          }
+        },
+        "required": [
+          "order_id",
+          "imagePath"
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "order_id": {
+            "type": "number"
+          },
+          "delivery_photo_key": {
+            "type": "string"
+          },
+          "orderDetailPath": {
+            "type": "string",
+            "format": "page-link",
+            "x-link-text-field": "linkText"
+          },
+          "linkText": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  ],
+  "components": []
+}

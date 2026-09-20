@@ -1,4 +1,37 @@
 const config = {
+  lazyCodeLoading: 'requiredComponents',
+  subPackages: [
+    {
+      root: 'aiSkill',
+      independent: true,
+      pages: [],
+    },
+  ],
+  agent: {
+    skills: [
+      {
+        name: 'querySkill',
+        description: '查询店内商品价格、客户与订单信息',
+        path: 'aiSkill/querySkill',
+      },
+      {
+        name: 'orderSkill',
+        description: '对话开单：匹配店内商品与客户，对话确认后直接提交订单',
+        path: 'aiSkill/orderSkill',
+      },
+      {
+        name: 'purchaseSkill',
+        description: '入库单据处理：识别/匹配收货单明细，对话确认后直接提交入库单',
+        path: 'aiSkill/purchaseSkill',
+      },
+      {
+        name: 'productSkill',
+        description: '商品档案管理：建档、加规格、改价、缺货标记、下架（变更前需用户确认）',
+        path: 'aiSkill/productSkill',
+      },
+    ],
+    instruction: 'aiSkill/AGENTS.md',
+  },
   pages: [
     'pages/products/index',
     'pages/product-list/index',

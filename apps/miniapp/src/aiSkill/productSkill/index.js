@@ -1,0 +1,15 @@
+const createProduct = require('./apis/createProduct')
+const createProductsFromSlip = require('./apis/createProductsFromSlip')
+const addSku = require('./apis/addSku')
+const updateSkuPrice = require('./apis/updateSkuPrice')
+const setSkuStockStatus = require('./apis/setSkuStockStatus')
+const archiveProduct = require('./apis/archiveProduct')
+
+const skill = wx.modelContext.createSkill('aiSkill/productSkill')
+
+skill.registerAPI('createProduct', createProduct)
+skill.registerAPI('createProductsFromSlip', createProductsFromSlip)
+skill.registerAPI('addSku', addSku)
+skill.registerAPI('updateSkuPrice', updateSkuPrice)
+skill.registerAPI('setSkuStockStatus', setSkuStockStatus)
+skill.registerAPI('archiveProduct', archiveProduct)

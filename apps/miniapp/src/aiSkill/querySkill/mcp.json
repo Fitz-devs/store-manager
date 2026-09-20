@@ -1,0 +1,234 @@
+{
+  "apis": [
+    {
+      "name": "searchProducts",
+      "description": "搜索店内商品。按关键词、别名或品牌检索在售商品，返回各规格的零售价、单位、优惠活动与缺货情况",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "keyword": {
+            "type": "string",
+            "description": "商品关键词，例如『金典』『安慕希』『红牛』。用户没有说出具体商品时，不要调用本接口"
+          },
+          "limit": {
+            "type": "number",
+            "description": "返回条数，范围 1-10，默认 5"
+          }
+        },
+        "required": [
+          "keyword"
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "sku_id": {
+                  "type": "number",
+                  "description": "规格 ID"
+                },
+                "product_id": {
+                  "type": "number",
+                  "description": "商品 ID"
+                },
+                "name": {
+                  "type": "string",
+                  "description": "商品名（含规格）"
+                },
+                "sale_unit": {
+                  "type": "string",
+                  "description": "销售单位"
+                },
+                "retail_price_yuan": {
+                  "type": "string",
+                  "description": "零售价（元）"
+                },
+                "promotion": {
+                  "type": "string",
+                  "description": "优惠活动文案，可能为空"
+                },
+                "out_of_stock": {
+                  "type": "boolean",
+                  "description": "是否缺货"
+                },
+                "pagePath": {
+                  "type": "string",
+                  "format": "page-link",
+                  "x-link-text-field": "name"
+                }
+              }
+            }
+          },
+          "total": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    {
+      "name": "searchCustomers",
+      "description": "搜索店内客户。按名称、电话或地址检索客户，返回欠款金额与订单数",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "keyword": {
+            "type": "string",
+            "description": "客户关键词，例如『伟记』『13800138000』。用户没有提到客户时，不要调用本接口"
+          },
+          "limit": {
+            "type": "number",
+            "description": "返回条数，范围 1-10，默认 5"
+          }
+        },
+        "required": [
+          "keyword"
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "customer_id": {
+                  "type": "number",
+                  "description": "客户 ID"
+                },
+                "name": {
+                  "type": "string",
+                  "description": "客户名称"
+                },
+                "phone": {
+                  "type": "string",
+                  "description": "电话，可能为空"
+                },
+                "unpaid_amount_yuan": {
+                  "type": "string",
+                  "description": "欠款金额（元）"
+                },
+                "order_count": {
+                  "type": "number",
+                  "description": "历史订单数"
+                },
+                "pagePath": {
+                  "type": "string",
+                  "format": "page-link",
+                  "x-link-text-field": "name"
+                }
+              }
+            }
+          },
+          "total": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    {
+      "name": "queryOrders",
+      "description": "查询店内销售订单。按关键词、状态、送货状态、日期范围筛选订单，支持只看未付款订单。只查销售订单（单号以 O 开头），不含入库单；查入库单请用 purchaseSkill 的 queryPurchases",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "q": {
+            "type": "string",
+            "description": "订单号或客户名关键词，例如『O2609』『伟记』"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "void"
+            ],
+            "description": "订单状态：open 进行中，void 已作废。不传默认查全部"
+          },
+          "delivery_status": {
+            "type": "string",
+            "enum": [
+              "none",
+              "pending",
+              "delivered"
+            ],
+            "description": "送货状态：none 无需配送，pending 待送货，delivered 已送达"
+          },
+          "only_unpaid": {
+            "type": "boolean",
+            "description": "只看还有余款的订单时传 true，例如用户问『谁还没付款』"
+          },
+          "from": {
+            "type": "string",
+            "description": "起始日期，格式 YYYY-MM-DD"
+          },
+          "to": {
+            "type": "string",
+            "description": "结束日期，格式 YYYY-MM-DD"
+          },
+          "limit": {
+            "type": "number",
+            "description": "返回条数，范围 1-20，默认 10"
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "order_id": {
+                  "type": "number",
+                  "description": "订单 ID"
+                },
+                "order_no": {
+                  "type": "string",
+                  "description": "订单号"
+                },
+                "customer_name": {
+                  "type": "string",
+                  "description": "客户名，散客显示为『散客』"
+                },
+                "total_yuan": {
+                  "type": "string",
+                  "description": "订单金额（元）"
+                },
+                "paid_amount_yuan": {
+                  "type": "string",
+                  "description": "已收金额（元）"
+                },
+                "status": {
+                  "type": "string",
+                  "description": "订单状态：进行中/已作废"
+                },
+                "delivery_status": {
+                  "type": "string",
+                  "description": "送货状态"
+                },
+                "created_at": {
+                  "type": "string",
+                  "description": "下单时间"
+                },
+                "pagePath": {
+                  "type": "string",
+                  "format": "page-link",
+                  "x-link-text-field": "order_no"
+                }
+              }
+            }
+          },
+          "total": {
+            "type": "number"
+          }
+        }
+      }
+    }
+  ],
+  "components": []
+}

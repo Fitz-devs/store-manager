@@ -22,7 +22,15 @@ export default defineConfig(async (merge) => {
       'process.env.TARO_APP_API': JSON.stringify(process.env.TARO_APP_API || ''),
     },
     copy: {
-      patterns: isH5 ? [{ from: 'src/assets', to: 'dist-h5/assets' }] : [],
+      patterns: isH5
+        ? [{ from: 'src/assets', to: 'dist-h5/assets' }]
+        : [
+            { from: 'src/aiSkill/AGENTS.md', to: 'dist/aiSkill/AGENTS.md' },
+            { from: 'src/aiSkill/querySkill/', to: 'dist/aiSkill/querySkill/' },
+            { from: 'src/aiSkill/orderSkill/', to: 'dist/aiSkill/orderSkill/' },
+            { from: 'src/aiSkill/purchaseSkill/', to: 'dist/aiSkill/purchaseSkill/' },
+            { from: 'src/aiSkill/productSkill/', to: 'dist/aiSkill/productSkill/' },
+          ],
       options: {},
     },
     framework: 'react',

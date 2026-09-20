@@ -1,0 +1,461 @@
+{
+  "apis": [
+    {
+      "name": "recognizePurchaseSlip",
+      "description": "系统识别收货单（降级通道）。把用户发送的收货单照片交给服务端 OCR 识别成明细行。仅在模型自行读图把握不足、或用户明确要求系统识别时使用",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "imagePath": {
+            "type": "string",
+            "format": "image",
+            "description": "收货单图片的本地路径，取自用户在对话中发送的图片"
+          }
+        },
+        "required": [
+          "imagePath"
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "spec": {
+                  "type": "string"
+                },
+                "qty": {
+                  "type": "number"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "unit_price_yuan": {
+                  "type": "string",
+                  "description": "单价（元），可能为空"
+                },
+                "amount_yuan": {
+                  "type": "string",
+                  "description": "金额（元），可能为空"
+                },
+                "box_code": {
+                  "type": "string",
+                  "description": "箱条码，可能为空"
+                },
+                "unit_code": {
+                  "type": "string",
+                  "description": "单件条码，可能为空"
+                },
+                "conversion_guess": {
+                  "type": "number"
+                }
+              }
+            }
+          },
+          "image_key": {
+            "type": "string",
+            "description": "上传后的单据图片 key，submit 时可回传挂到入库单"
+          },
+          "supplier_name": {
+            "type": "string"
+          },
+          "order_date": {
+            "type": "string"
+          },
+          "total_raw": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "name": "matchPurchaseItems",
+      "description": "匹配收货单明细到店内商品。自动匹配只按店内商品码（整箱码/单件码）批量查询；不做品名模糊搜索。码未命中时 matched=false，请引导用户检索或确认后建档，禁止编造 sku_id",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "品名，例如『金典纯牛奶』"
+                },
+                "spec": {
+                  "type": "string",
+                  "description": "规格提示，例如『250ml*12』"
+                },
+                "qty": {
+                  "type": "number",
+                  "description": "数量（按单据单位）"
+                },
+                "unit": {
+                  "type": "string",
+                  "description": "单据单位，例如『箱』『件』"
+                },
+                "unit_price_yuan": {
+                  "type": "string",
+                  "description": "单据单价（元），对照用"
+                },
+                "box_code": {
+                  "type": "string",
+                  "description": "箱条码，匹配优先用它"
+                },
+                "unit_code": {
+                  "type": "string",
+                  "description": "单件条码，箱码未中时用它"
+                },
+                "conversion_guess": {
+                  "type": "number",
+                  "description": "单位换算猜测：1 箱=N 件则为 N"
+                }
+              },
+              "required": [
+                "qty"
+              ]
+            },
+            "description": "单据明细行，1-200 行"
+          }
+        },
+        "required": [
+          "rows"
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "qty": {
+                  "type": "number"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "unit_price_yuan": {
+                  "type": "string"
+                },
+                "conversion_guess": {
+                  "type": "number"
+                },
+                "matched": {
+                  "type": "boolean"
+                },
+                "ambiguous": {
+                  "type": "boolean",
+                  "description": "是否多候选需要用户确认"
+                },
+                "sku_id": {
+                  "type": "number"
+                },
+                "product_id": {
+                  "type": "number"
+                },
+                "product_name": {
+                  "type": "string"
+                },
+                "product_status": {
+                  "type": "string",
+                  "description": "商品状态；archived 表示已下架，商品列表默认不显示"
+                },
+                "sale_unit": {
+                  "type": "string"
+                },
+                "retail_price_yuan": {
+                  "type": "string"
+                },
+                "latest_purchase_price_yuan": {
+                  "type": "string",
+                  "description": "库内最近进货价（元），用于和单据价对照提醒"
+                },
+                "candidates": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  },
+                  "description": "歧义时的候选规格列表"
+                }
+              }
+            }
+          },
+          "not_found": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "total": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    {
+      "name": "submitPurchase",
+      "description": "提交入库单（写操作：必须先把明细、数量、单价、金额、供应商完整复述给用户，获得明确同意后才能调用）。确认后直接入库，无需跳转小程序页面",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "sku_id": {
+                  "type": "number",
+                  "description": "规格 ID，取自 matchPurchaseItems 或建档接口返回的原值，禁止编造"
+                },
+                "product_id": {
+                  "type": "number",
+                  "description": "商品 ID，取自 matchPurchaseItems 或建档接口返回的原值，禁止编造"
+                },
+                "qty": {
+                  "type": "number",
+                  "description": "入库数量，按 unit_name 计。进X送X 可拆成多行（搭赠行 unit_price_yuan 填 0），submit 会按 sku 合并数量与金额并摊进货价"
+                },
+                "unit_name": {
+                  "type": "string",
+                  "description": "单据单位，例如『箱』『件』；省略则用商品销售单位"
+                },
+                "conversion": {
+                  "type": "number",
+                  "description": "单位换算：1 箱=N 件则填 N；不确定时省略按 1 处理"
+                },
+                "unit_price_yuan": {
+                  "type": "string",
+                  "description": "单据进价（元，按 unit_name 计），以图片上数字为准。进X送X 搭赠行填 0.00；省略时按库内最近进货价提交"
+                }
+              },
+              "required": [
+                "sku_id",
+                "product_id",
+                "qty"
+              ]
+            },
+            "description": "入库明细，1-200 行"
+          },
+          "supplier_name": {
+            "type": "string",
+            "description": "供应商名称（单据抬头），用户没提则省略"
+          },
+          "ordered_at": {
+            "type": "string",
+            "description": "单据日期，格式 YYYY-MM-DD；省略按今天"
+          },
+          "note": {
+            "type": "string",
+            "description": "入库备注，可省略；搭赠等说明可写这里"
+          },
+          "image_keys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "单据图片 key 列表，取自 recognizePurchaseSlip 返回的 image_key，可省略"
+          },
+          "imagePath": {
+            "type": "string",
+            "format": "image",
+            "description": "单据图片的本地路径（用户在对话中发送的收货单照片）。传入后会自动上传到文件存储并挂到入库单。路径 A（模型读图）/路径 B（recognizePurchaseSlip 识别）两条路径都可传"
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "description": "submitted 表示已入库"
+          },
+          "purchase_id": {
+            "type": "number"
+          },
+          "purchase_no": {
+            "type": "string"
+          },
+          "supplier_name": {
+            "type": "string"
+          },
+          "ordered_at": {
+            "type": "string"
+          },
+          "line_count": {
+            "type": "number"
+          },
+          "subtotal_yuan": {
+            "type": "string"
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "qty": {
+                  "type": "number"
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "price_yuan": {
+                  "type": "string"
+                },
+                "amount_yuan": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "purchaseDetailPath": {
+            "type": "string",
+            "format": "page-link",
+            "x-link-text-field": "linkText"
+          },
+          "linkText": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "name": "patchPurchaseImages",
+      "description": "补充上传入库单照片（写操作：仅在用户明确要求补传、或对话中给出了单据照片而入库单缺图时调用）。purchase_id 取自 queryPurchases 或 submitPurchase 返回的原值；用户只给了单号时先用 queryPurchases 解析。上传后 PATCH 到对应入库单，入库详情页即可预览",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "purchase_id": {
+            "type": "number",
+            "description": "入库单 ID，取自 submitPurchase 返回的 purchase_id 原值，禁止编造"
+          },
+          "imagePath": {
+            "type": "string",
+            "format": "image",
+            "description": "用户在对话中发送的单据照片本地路径；传入后自动上传并挂到入库单"
+          },
+          "image_keys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "已上传到文件存储的图片 key 列表（如 recognizePurchaseSlip 返回的 image_key），可与 imagePath 合并"
+          }
+        },
+        "required": [
+          "purchase_id"
+        ]
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "purchase_id": {
+            "type": "number"
+          },
+          "purchase_no": {
+            "type": "string"
+          },
+          "image_keys_count": {
+            "type": "number"
+          },
+          "purchaseDetailPath": {
+            "type": "string",
+            "format": "page-link",
+            "x-link-text-field": "linkText"
+          },
+          "linkText": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "name": "queryPurchases",
+      "description": "查询入库单。按入库单号/供应商/日期检索入库记录，返回 purchase_id、金额与单据照片数量。用户提到入库单号（纯数字，如 260919-0011）时先调本接口解析 purchase_id；销售订单查询用 querySkill 的 queryOrders（单号以 O 开头）",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "q": {
+            "type": "string",
+            "description": "入库单号或供应商关键词，例如『260919-0011』『伊利』"
+          },
+          "from": {
+            "type": "string",
+            "description": "起始日期，格式 YYYY-MM-DD"
+          },
+          "to": {
+            "type": "string",
+            "description": "结束日期，格式 YYYY-MM-DD"
+          },
+          "limit": {
+            "type": "number",
+            "description": "返回条数，范围 1-20，默认 10"
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "purchase_id": {
+                  "type": "number",
+                  "description": "入库单 ID，补传/详情均用它"
+                },
+                "purchase_no": {
+                  "type": "string",
+                  "description": "入库单号（纯数字格式）"
+                },
+                "supplier_name": {
+                  "type": "string"
+                },
+                "total_yuan": {
+                  "type": "string"
+                },
+                "ordered_at": {
+                  "type": "string"
+                },
+                "image_count": {
+                  "type": "number",
+                  "description": "已挂单据照片数量，0 表示缺图"
+                },
+                "pagePath": {
+                  "type": "string",
+                  "format": "page-link",
+                  "x-link-text-field": "purchase_no"
+                }
+              }
+            }
+          },
+          "total": {
+            "type": "number"
+          }
+        }
+      }
+    }
+  ],
+  "components": []
+}
