@@ -8,7 +8,7 @@ import type {
   PurchaseUpdateInput,
   PurchaseWithItems,
 } from '@sm/shared'
-import { calcAmount, normalizeUnitPrice, priceChangeRatio } from '@sm/shared'
+import { calcAmount, normalizeUnitPrice, priceChangeRatio, resolvePurchasePriceCompare } from '@sm/shared'
 import type { DB } from '../db/schema'
 import type { StorageAdapter } from '../adapters/storage'
 import { batchCompiled } from '../db/batch'
@@ -64,8 +64,13 @@ export async function checkPurchasePrices(
   return items.map((item) => {
     const sku = meta.get(item.sku_id)
     if (!sku) throw new ApiError(400, 'SKU_NOT_FOUND', `商品不存在: ${item.sku_id}`)
-    const newPrice = normalizeUnitPrice(item.unit_price, item.conversion)
+    // 同一商品销售单位固定，单据描述可能不同：单价直接比，不按 conversion 折算
+    const cmp = resolvePurchasePriceCompare({
+      docUnitPriceFen: item.unit_price,
+      latestPurchaseFen: sku.latest_purchase_price,
+    })
     const oldPrice = sku.latest_purchase_price
+    const newPrice = item.unit_price
     return {
       sku_id: item.sku_id,
       product_name: sku.product_name,
@@ -76,7 +81,7 @@ export async function checkPurchasePrices(
       old_price: oldPrice,
       new_price: newPrice,
       ratio: priceChangeRatio(oldPrice, newPrice),
-      changed: oldPrice !== null && oldPrice !== newPrice,
+      changed: oldPrice !== null && !!cmp?.warn,
     }
   })
 }

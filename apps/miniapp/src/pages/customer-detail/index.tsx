@@ -86,6 +86,21 @@ export default function CustomerDetailPage() {
     if (Number.isFinite(id)) load()
   })
 
+  // 微信小程序转发给同事
+  onShareAppMessage = () => {
+    if (!detail) {
+      return { title: '店铺管家', path: '/pages/customers/index' }
+    }
+    const name = detail.name
+    const unpaid = detail.total_unpaid
+    const debt = unpaid && unpaid > 0 ? ` 欠款 ${formatFen(unpaid)}` : ''
+    const title = `客户 ${name}${debt}`.slice(0, 50)
+    return {
+      title,
+      path: `/pages/customer-detail/index?id=${detail.id}`,
+    }
+  }
+
   const resetAddressForm = () => {
     setAddrLabel('')
     setAddrContact('')

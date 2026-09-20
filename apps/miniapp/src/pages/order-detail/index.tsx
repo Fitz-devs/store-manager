@@ -60,6 +60,19 @@ export default function OrderDetailPage() {
     load()
   })
 
+  // 微信小程序转发给同事
+  onShareAppMessage = () => {
+    if (!order) {
+      return { title: '店铺管家', path: '/pages/orders/index' }
+    }
+    const total = formatFen(order.total)
+    const title = `订单 ${order.order_no} ${total}`.slice(0, 50)
+    return {
+      title,
+      path: `/pages/order-detail/index?id=${order.id}`,
+    }
+  }
+
   const deliver = async () => {
     if (!order) return
     try {
@@ -344,6 +357,32 @@ export default function OrderDetailPage() {
             {order.delivery_status !== 'delivered' && order.status === 'open' ? (
               <Button className="btn btn-primary full-btn" onClick={deliver}>
                 拍照送达（带时间/地址水印）
+              </Button>
+            ) : order.delivery_status === 'delivered' && order.status === 'open' ? (
+              <Button
+                className="btn btn-secondary full-btn"
+                onClick={async () => {
+                  try {
+                    const images = await pickImages({ count: 1, source: 'both' })
+                    const image = images[0]
+                    if (!image) return
+                    Taro.showLoading({ title: '上传中' })
+                    const uploaded = await uploadLocalImage(image, 'deliveries')
+                    const updated = await api.patch(`/api/orders/${id}`, {
+                      delivery_photo_key: uploaded.key,
+                    })
+                    Taro.hideLoading()
+                    Taro.showToast({ title: '已替换送货照', icon: 'success' })
+                    load()
+                    void updated
+                  } catch (error) {
+                    Taro.hideLoading()
+                    const message = (error as Error).message ?? ''
+                    if (!message.includes('cancel')) Taro.showToast({ title: message || '上传失败', icon: 'none' })
+                  }
+                }}
+              >
+                替换送货照
               </Button>
             ) : null}
           </View>

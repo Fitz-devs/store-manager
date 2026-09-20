@@ -5,6 +5,7 @@ import type { PurchaseWithItems } from '@sm/shared'
 import { api, fileUrl } from '../../api/client'
 import { useAuthGuard } from '../../utils/auth'
 import { formatDateTime, formatFen } from '../../utils/format'
+import { pickImages, uploadLocalImage } from '../../utils/media'
 import './index.scss'
 
 export default function PurchaseDetail() {
@@ -35,6 +36,39 @@ export default function PurchaseDetail() {
   useDidShow(() => {
     load()
   })
+
+  // 微信小程序转发给同事
+  onShareAppMessage = () => {
+    if (!purchase) {
+      return { title: '店铺管家', path: '/pages/purchases/index' }
+    }
+    const total = formatFen(purchase.total_amount)
+    const title = `入库单 ${purchase.purchase_no} ${total}`.slice(0, 50)
+    return {
+      title,
+      path: `/pages/purchase-detail/index?id=${purchase.id}`,
+    }
+  }
+
+  const addImage = async () => {
+    try {
+      const images = await pickImages({ count: 1, source: 'both' })
+      const image = images[0]
+      if (!image) return
+      Taro.showLoading({ title: '上传中' })
+      const uploaded = await uploadLocalImage(image, 'purchases')
+      const currentKeys = purchase && purchase.image_keys ? (JSON.parse(purchase.image_keys) as string[]) : []
+      const nextKeys = Array.from(new Set([...currentKeys, uploaded.key])).slice(-10)
+      const updated = await api.patch<PurchaseWithItems>(`/api/purchases/${id}`, { image_keys: nextKeys })
+      Taro.hideLoading()
+      Taro.showToast({ title: '已补充上传', icon: 'success' })
+      setPurchase(updated)
+    } catch (error) {
+      Taro.hideLoading()
+      const message = (error as Error).message ?? ''
+      if (!message.includes('cancel')) Taro.showToast({ title: message || '上传失败', icon: 'none' })
+    }
+  }
 
   const purge = async () => {
     const confirm = await Taro.showModal({
@@ -143,6 +177,9 @@ export default function PurchaseDetail() {
       )}
 
       <View className="footer-bar">
+        <Button className="btn btn-secondary" onClick={addImage}>
+          补充上传照片
+        </Button>
         <Button className="btn btn-danger" onClick={purge}>
           彻底删除
         </Button>
